@@ -1,0 +1,15 @@
+tool_id,tool_name,adapter_name,plugin_version,required_scopes,consent_status,connection_status,read_test_result,write_approval_test_result,deny_test_result,restart_test_result,last_verified_at,evidence_path,release_blocker,notes,acceptance_gate,verification_status
+T01,Web search and grounded research,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T02,Webpage fetch/read,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T03,Gmail read/search,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T04,Gmail drafts and send,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T05,Google Calendar read and free/busy,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T06,Google Calendar create/update/delete,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T07,Google Drive search/read,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T08,Google Drive organize/create/update/delete,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T09,Personal notes,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T10,Scoped local file/document access,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T11,Reminders and timers,,,,,,,,,,,,Required for G8; unverified,Pending M5 at G4; real scheduling proof required at G5; final UI and real-device verification at G6-G8,G5,NOT_STARTED
+T12,Repeating schedules and daily agenda,,,,,,,,,,,,Required for G8; unverified,Pending M5 at G4; real scheduling proof required at G5; final UI and real-device verification at G6-G8,G5,NOT_STARTED
+T13,Generic external capability system,,,,,,,,,,,,Required for G8; unverified,Test-only SDK demonstration permitted; final UI and real-device verification at G6-G8,G4,NOT_STARTED
+T14,Tool execution visibility and approvals,,,,,,,,,,,,Required for G8; unverified,Integration proof required at G4; final UI and real-device verification at G6-G8,G4,NOT_STARTED
