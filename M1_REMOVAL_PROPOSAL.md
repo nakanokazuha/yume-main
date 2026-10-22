@@ -1,6 +1,6 @@
-# M1 Removal Proposal — Review Draft
+# M1 Removal Proposal — Authorized Execution
 
-Status: **proposed; no removals executed; creator review required before M1**.
+Status: **creator directly authorized physical extraction on 2026-10-23; batches are being executed and recorded below.** The initial M0 audit is still incomplete, and G0 is not represented as passed. The creator's latest instruction authorizes continuing the donor import and direct deletions in this repository.
 
 ## Audited starting point
 
@@ -24,10 +24,20 @@ Retain and prove the smallest working closure of the single-turn agent loop, rea
 
 Before deletion, identify every path, owning package, static and dynamic importer, config/manifest reference, generated artifact, tests, license and protected contract. If a protected root depends on a concrete candidate, first route it through a verified upstream SDK/slot. Delete in a reversible commit, then run targeted contract tests, clean install/build, reference scans, dependency closure and shipped-artifact inspection. Compare size/startup/RSS against M0 under the same environment. Record each path and rollback commit in `templates/REMOVAL_LEDGER.csv`.
 
+## Executed batches
+
+### B-001 — SenseAudio media-understanding provider
+
+- Commit: `fe376204` (`remove SenseAudio media provider`). Rollback anchor: `upstream-v2026.10.5-baseline` / `8983526a`.
+- Removed the extension package, provider implementation and tests, provider documentation, provider asset, icon/catalog entries, environment key, test registration case, and labeler/knip entries. The exact changed path list and commands are in `templates/REMOVAL_LEDGER.csv`.
+- The package had only a workspace `@openclaw/plugin-sdk` development dependency and no external runtime dependency. The workspace package count moved from 189 to 188; the lockfile did not change.
+- The generic provider registration seam remains. The focused provider-contract, agent-loop, plugin security, dotenv, and Gateway frame suites passed; the complete build passed. Static source and generated `dist` scans found no active SenseAudio reference. A historical release note and the archived upstream documentation are retained as provenance.
+- This batch is verified on its own; M1/G1 remains open until the other approved removal classes, minimal-core smoke, clean-install evidence, size comparison, and complete extraction report are done.
+
 ## Do not remove without additional evidence
 
 Do not remove any path solely because its directory name appears out of scope. In particular, do not remove `src/agents`, provider core, sessions/storage, Gateway/auth, plugin loader/SDK, shared security utilities, generic tool policy, scheduler seam or memory/context seam before completing reachability and contract mapping. Do not rewrite the agent runtime or replace the plugin framework for convenience; stop and propose an ADR if preservation proves infeasible.
 
-## Review requested at G0
+## Initial review state
 
-Review the protected roots and candidate batches after the M0 graph, test, build and license evidence is complete. This document is a conservative draft and is not sufficient authorization to delete source. No M1 batch is approved by this draft.
+The original draft requested review after the complete M0 graph, test, build and license evidence. The creator later directly authorized import and deletion in this repository on 2026-10-23. That instruction supersedes the draft's approval hold for this execution; it does not turn the incomplete M0 audit into a passed gate or waive the per-batch reachability, test, licensing, or reversibility evidence.

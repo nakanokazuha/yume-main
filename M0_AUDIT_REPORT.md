@@ -1,7 +1,7 @@
 # M0 Audit Report — Initial Source Baseline
 
 Date: 2026-10-22 (Asia/Tokyo)
-Status: audit in progress; G0 is not passed.
+Status at this audit snapshot: audit in progress; G0 is not passed. The creator directly authorized continuing the import and physical extraction in this repository on 2026-10-23; see `M1_REMOVAL_PROPOSAL.md` and `docs/17_BUILD_STATUS.md`. This later instruction does not retroactively pass G0.
 
 ## Upstream pin
 
@@ -35,4 +35,4 @@ The local host supports Node and pnpm versions declared by this release. Rust/Ca
 
 ## G0 disposition
 
-**Not passed.** The source pin, frozen dependency install, and focused tests are evidenced. The full build, complete import/reachability inventory, baseline runtime/resource metrics, full licensing scan, and creator review of the removal proposal remain outstanding. No upstream code has been deleted. M1 must not begin until the audit is completed and you have reviewed the inventory and removal proposal.
+**Not passed at the 2026-10-22 snapshot.** The source pin, frozen dependency install, and focused tests are evidenced. The full baseline build, complete import/reachability inventory, baseline runtime/resource metrics, full licensing scan, and full contract mapping remain outstanding. No upstream code had been deleted at this snapshot. The creator's later direct instruction authorizes extraction while these audit items remain recorded as open; see `docs/17_BUILD_STATUS.md` for current activity.
