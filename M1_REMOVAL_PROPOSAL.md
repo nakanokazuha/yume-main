@@ -45,6 +45,13 @@ Before deletion, identify every path, owning package, static and dynamic importe
 - One broad CI guard attempt was rejected by automatic review because it included shared security and release controls. The implemented cleanup is limited to removed app-specific jobs and files. The current checkout-fixture runner still has 9 process-census `EPERM` failures (140 passed, 8 skipped); details are recorded in `docs/17_BUILD_STATUS.md`.
 - No real inference, persistent memory or device capability was exercised, and no hosted CI or hardware smoke ran. B-002 is locally verified; G1 remains open until dummy minimal-core smoke, preserved security contracts, final absence scans, controlled artifact comparison and extraction report pass.
 
+### B-003 — Bundled GitHub link-reader plugin
+
+- Removed `extensions/github/**`, the active GitHub plugin guide/reference and its labeler rule. At the pinned B-002 parent it contained 23 tracked files / 221,713 bytes; `package.json` declared only the workspace plugin SDK as a development dependency.
+- Regenerated the plugin inventory and removed active Control UI documentation for the GitHub reader. The generic plugin link-reader surface remains for compatibility with externally installed plugins. Marketplace GitHub source handling is separate host-side plugin installation infrastructure and remains; core model-facing GitHub publication tools are a separate mapped removal and are not claimed removed by this batch.
+- Lockfile-only and fresh frozen installs passed with 187 workspaces; plugin inventory generation check passed; targeted plugin/UI tests passed 122 after rerunning one sandbox process-census case with process-inspection permission. Full Node 24.21.0 build passed in 3m47.2s; the existing Control UI startup JavaScript budget warning remains.
+- This batch does not satisfy the broader coding/GitHub removal class or G1. Core GitHub publication, shell/code execution, channels, media implementations and unselected providers remain under the M1 audit.
+
 ## Do not remove without additional evidence
 
 Do not remove any path solely because its directory name appears out of scope. In particular, do not remove `src/agents`, provider core, sessions/storage, Gateway/auth, plugin loader/SDK, shared security utilities, generic tool policy, scheduler seam or memory/context seam before completing reachability and contract mapping. Do not rewrite the agent runtime or replace the plugin framework for convenience; stop and propose an ADR if preservation proves infeasible.

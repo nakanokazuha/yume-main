@@ -56,14 +56,14 @@ Common reasons to enable it:
   automated edits.
 
 ```bash
-# Is the GitHub plugin enabled in this config?
-openclaw path resolve 'oc://config.jsonc/plugins/github/enabled' --json
+# Is the example plugin enabled in this config?
+openclaw path resolve 'oc://config.jsonc/plugins/sample-plugin/enabled' --json
 
 # Which tool-call names appear in this session log?
 openclaw path find 'oc://session.jsonl/[event=tool_call]/name' --json
 
 # What bytes would this tiny config edit write?
-openclaw path set 'oc://config.jsonc/plugins/github/enabled' 'true' --dry-run
+openclaw path set 'oc://config.jsonc/plugins/sample-plugin/enabled' 'true' --dry-run
 ```
 
 `oc-path` is intentionally not the owner of higher-level semantics. Memory

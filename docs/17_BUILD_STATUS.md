@@ -38,6 +38,13 @@
 - `ci-workflow-guards` passed 140 tests; 9 checkout-fixture cases failed because sandbox process-census calls returned `EPERM`, and 8 were skipped. Its ignored `.artifacts/ci-checkout` fixtures were left untouched. An earlier broad run (658 passed / 457 failed / 10 skipped) predates workflow cleanup and is historical only.
 - Real versus mock: no inference, persistent memory, or device capability was exercised. No hosted CI or hardware smoke ran. B-002 is locally verified; G1 remains incomplete pending the minimal-core dummy agent/session/tool/plugin/Gateway smoke, security-contract checks, final absence scans, controlled artifact comparison, and extraction report. No incomplete milestone has been pushed.
 
+### B-003 bundled GitHub link-reader plugin — 2026-10-23
+
+- Removed the `@openclaw/github` plugin source, icon/activity assets, package manifest, plugin reference/guide and its labeler rule. The package had only `@openclaw/plugin-sdk` as a workspace development dependency and no external runtime dependency. Its baseline footprint was 23 tracked files / 221,713 bytes; the lockfile importer was removed, leaving 187 workspace projects and unchanged dependency resolutions.
+- Regenerated and checked the bundled plugin inventory; removed the obsolete GitHub-reader panel documentation and replaced stale plugin examples in active CLI docs. The generic plugin link-reader SDK/capability remains available for external plugins. This batch removes the reader extension, not the separate core GitHub publication workflows, which remain mapped for a later tool-pruning batch.
+- `pnpm plugins:inventory:check` passed. Targeted Vitest suites passed 122 tests across plugin build-entry, install/uninstall, and UI skill catalog files. The default sandbox run had one OS process-census `EPERM`; that exact test passed on a retry with the required process-inspection permission. Frozen install passed at 187 workspaces. Full Node 24.21.0 build passed in 3m47.2s; the existing startup JavaScript warning remains at 374,181 bytes gzip against a 373,454-byte budget. `git diff --check` passed.
+- Real versus mock: this batch contains no inference or external GitHub API check. G1 remains open for the final clean build, broader coding/channel/media pruning, minimal-core smoke, policy checks, artifact comparison, and extraction report.
+
 ## First-session evidence to fill
 
 ### Planning correction — 2026-10-22

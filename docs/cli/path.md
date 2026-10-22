@@ -69,13 +69,13 @@ beats another bespoke parser.
 Read one value from a human-edited config file:
 
 ```bash
-openclaw path resolve 'oc://config.jsonc/plugins/github/enabled'
+openclaw path resolve 'oc://config.jsonc/plugins/sample-plugin/enabled'
 ```
 
 Preview a write without touching disk:
 
 ```bash
-openclaw path set 'oc://config.jsonc/plugins/github/enabled' 'true' --dry-run
+openclaw path set 'oc://config.jsonc/plugins/sample-plugin/enabled' 'true' --dry-run
 ```
 
 Find matching records in an append-only JSONL log:
@@ -351,21 +351,21 @@ even when the source uses underscores (`send_email` becomes `send-email`).
 // config.jsonc
 {
   "plugins": {
-    "github": {"enabled": true, "role": "vcs"},
+    "sample-plugin": {"enabled": true, "role": "example"},
     "slack":  {"enabled": false, "role": "chat"}
   }
 }
 ```
 
 ```bash
-$ openclaw path resolve 'oc://config.jsonc/plugins/github/enabled' --file config.jsonc --human
+$ openclaw path resolve 'oc://config.jsonc/plugins/sample-plugin/enabled' --file config.jsonc --human
 leaf @ L4: "true" (boolean)
 
 $ openclaw path set 'oc://config.jsonc/plugins/slack/enabled' 'true' --file config.jsonc --dry-run
 --dry-run: would write 142 bytes to /…/config.jsonc
 {
   "plugins": {
-    "github": {"enabled": true, "role": "vcs"},
+    "sample-plugin": {"enabled": true, "role": "example"},
     "slack":  {"enabled": true, "role": "chat"}
   }
 }
@@ -449,7 +449,7 @@ on at least one match, `1` on zero. File-slot wildcards are rejected with
 ```bash
 openclaw path find 'oc://AGENTS.md/tools/**/risk'
 openclaw path find 'oc://session.jsonl/[event=action]/userId'
-openclaw path find 'oc://config.jsonc/plugins/{github,slack}/enabled'
+openclaw path find 'oc://config.jsonc/plugins/{sample-plugin,slack}/enabled'
 ```
 
 ### `set <oc-path> <value>`
