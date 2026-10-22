@@ -1060,7 +1060,6 @@ const config = {
       // Imported directly from the GitHub Actions evidence workflow.
       "src/profile-evidence-sharding.ts!",
     ]),
-    [`${BUNDLED_PLUGIN_ROOT_DIR}/senseaudio`]: bundledPluginWorkspace(),
     [`${BUNDLED_PLUGIN_ROOT_DIR}/slack`]: {
       ...bundledPluginWorkspace([
         // The vendor integrity test executes this verifier by path.

@@ -194,10 +194,6 @@ export const pluginRegistrationContractCases = {
     pluginId: "runway",
     videoGenerationProviderIds: ["runway"],
   },
-  senseaudio: {
-    pluginId: "senseaudio",
-    mediaUnderstandingProviderIds: ["senseaudio"],
-  },
   tavily: {
     pluginId: "tavily",
     webSearchProviderIds: ["tavily"],

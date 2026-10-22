@@ -2264,8 +2264,7 @@
                       "providers/elevenlabs",
                       "providers/fish-audio",
                       "providers/gradium",
-                      "providers/inworld",
-                      "providers/senseaudio"
+                      "providers/inworld"
                     ]
                   },
                   {

@@ -37,7 +37,7 @@ If you have not configured models and `tools.media.audio.enabled` is not `false`
 
 1. **Active reply model**, when its provider supports audio understanding.
 2. **Configured provider auth** — any `models.providers.*` entry with auth available for a provider that supports audio transcription. This is checked before local CLIs, so a configured API key always wins over a local binary on `PATH`.
-   Provider priority when multiple are configured: Groq, OpenAI, xAI, Deepgram, Google, SenseAudio, ElevenLabs, Mistral.
+   Provider priority when multiple are configured: Groq, OpenAI, xAI, Deepgram, Google, ElevenLabs, Mistral.
 3. **Local CLIs** (only if no provider auth resolved). OpenClaw builds an ordered fallback list:
    - `whisper-cli`, before CPU defaults only when an earlier model invocation in the current process observed Metal or CUDA
    - `sherpa-onnx-offline` on its default CPU provider (requires `SHERPA_ONNX_MODEL_DIR` with `tokens.txt`, `encoder.onnx`, `decoder.onnx`, and `joiner.onnx`)
@@ -213,25 +213,6 @@ provider-wide rather than scoped to the audio model entry.
 }
 ```
 
-### Provider-only (SenseAudio)
-
-```json5
-{
-  tools: {
-    media: {
-      models: [
-        {
-          provider: "senseaudio",
-          model: "senseaudio-asr-pro-1.5-260319",
-          capabilities: ["audio"],
-        },
-      ],
-      audio: { enabled: true },
-    },
-  },
-}
-```
-
 ### Echo transcript to chat (opt-in)
 
 ```json5
@@ -254,7 +235,6 @@ provider-wide rather than scoped to the audio model entry.
 - Groq setup details: [Groq](/providers/groq).
 - Deepgram picks up `DEEPGRAM_API_KEY` when `provider: "deepgram"` is used. Setup details: [Deepgram](/providers/deepgram).
 - Mistral setup details: [Mistral](/providers/mistral).
-- SenseAudio picks up `SENSEAUDIO_API_KEY` when `provider: "senseaudio"` is used. Setup details: [SenseAudio](/providers/senseaudio).
 - Audio providers can use defaults under `tools.media.audio` or override `baseUrl`, `headers`, `providerOptions`, and limits on their `tools.media.models[]` entry.
 - Leave `tools.media.audio.language` unset for language autodetection. Provider transcription requests omit the implicit “Transcribe the audio.” prompt, including when English is selected; explicit custom prompts and language hints are preserved. Use transcription prompts for context or spelling in the audio's language, not instructions to the downstream agent.
 - The built-in audio size cap is 20MB. An entry-level `maxBytes` override can change it; oversize audio is skipped for that model and the next entry is tried.

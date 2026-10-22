@@ -101,7 +101,6 @@ inbound media through their reply model; see the full provider list in
 | PixVerse          |       |   ✓   |       |     |     |                |                     |
 | Qwen              |       |   ✓   |       |     |     |                |          ✓          |
 | Runway            |       |   ✓   |       |     |     |                |                     |
-| SenseAudio        |       |       |       |     |  ✓  |                |                     |
 | Together          |       |   ✓   |       |     |     |                |                     |
 | Volcengine        |       |       |       |  ✓  |     |                |                     |
 | Vydra             |   ✓   |   ✓   |       |  ✓  |     |                |                     |
@@ -149,7 +148,7 @@ not guaranteed. The local history notice does not resend media to the channel.
 ## Speech-to-text and Voice Call
 
 Deepgram, DeepInfra, ElevenLabs, Google, Groq, Mistral, OpenAI, OpenRouter,
-SenseAudio, and xAI can all transcribe inbound audio through the batch
+and xAI can all transcribe inbound audio through the batch
 `tools.media.audio` path when configured. Channel plugins that preflight a
 voice note for mention gating or command parsing mark the transcribed
 attachment on the inbound context, so the shared media-understanding pass

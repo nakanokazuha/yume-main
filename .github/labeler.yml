@@ -730,11 +730,6 @@
       - any-glob-to-any-file:
           - "extensions/searxng/**"
           - "docs/plugins/reference/searxng.md"
-"extensions: senseaudio":
-  - changed-files:
-      - any-glob-to-any-file:
-          - "extensions/senseaudio/**"
-          - "docs/providers/senseaudio.md"
 "extensions: synthetic":
   - changed-files:
       - any-glob-to-any-file:
