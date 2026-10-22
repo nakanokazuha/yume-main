@@ -233,23 +233,6 @@ describe("package scripts", () => {
     expect(readPackageJson().scripts.start).toBe("node openclaw.mjs");
   });
 
-  it("builds iOS against a generic simulator by default", () => {
-    const script = readPackageJson().scripts["ios:build"];
-
-    expect(script).toContain("${IOS_DEST:-generic/platform=iOS Simulator}");
-    expect(script).not.toContain("name=iPhone");
-  });
-
-  it("keeps the Wear app in the root Android contributor gates", () => {
-    const scripts = readPackageJson().scripts;
-
-    expect(scripts["android:assemble"]).toContain(":wear:assembleDebug");
-    expect(scripts["android:format"]).toContain(":wear:ktlintFormat");
-    expect(scripts["android:lint"]).toContain(":wear:ktlintCheck");
-    expect(scripts["android:lint:android"]).toContain(":wear:lintDebug");
-    expect(scripts["android:test"]).toContain(":wear:testDebugUnitTest");
-  });
-
   it("routes every declared Windows CI test to its native lane", () => {
     const missedTargets = readWindowsCiPartScripts()
       .flatMap(readProjectTestTargets)
@@ -259,7 +242,7 @@ describe("package scripts", () => {
 
   it.for([
     { platform: "windows", parts: [1, 2] },
-    { platform: "macos", parts: [1, 2, 3] },
+    { platform: "macos", parts: [1, 2] },
   ])(
     "partitions $platform CI coverage into disjoint explicit test lists",
     ({ platform, parts }) => {

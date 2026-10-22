@@ -59,10 +59,6 @@ is_stable_release() {
   [[ "${RELEASE_NPM_DIST_TAG}" != "extended-stable" && "${RELEASE_TAG}" != *"-beta."* ]]
 }
 
-is_android_release() {
-  [[ "${RELEASE_NPM_DIST_TAG}" != "extended-stable" && "${RELEASE_TAG}" =~ ^v[0-9]{4}\.[1-9][0-9]*\.[1-9][0-9]*(-[1-9][0-9]*)?$ ]]
-}
-
 resolve_child_workflow_ref() {
   local workflow_full_ref="$1"
 
@@ -318,12 +314,6 @@ dispatch_workflow_at_ref() {
     --arg ref "$workflow_ref" \
     --argjson inputs "$inputs_json" \
     '{ref: $ref, inputs: $inputs}')"
-  # Ref and asset queries can outlive native qualification. Check the attested
-  # approval's exact native attempt after those reads and immediately before POST.
-  if [[ "$workflow" == "android-release.yml" ]]; then
-    node "${BASH_SOURCE[0]%/*}/../android-native-ci.mjs" \
-      "${RUNNER_TEMP}/android-release-approval/approval.json" || return 1
-  fi
   # API 2026-03-10 removed return_run_details and always returns the
   # workflow_run_id, API run_url, and browser html_url in a 200 response.
   dispatch_response="$(printf '%s' "$dispatch_body" | gh api \
@@ -857,57 +847,6 @@ create_or_update_github_release() {
   echo "- GitHub release draft: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}" >> "$GITHUB_STEP_SUMMARY"
 }
 
-verify_android_release_asset_contract() {
-  local actual_android_assets actual_digest expected_android_assets expected_digest expected_hash release_json verify_dir
-  local -a required_assets=(
-    "OpenClaw-Android.apk"
-    "OpenClaw-Android-SHA256SUMS.txt"
-  )
-
-  release_json="$(gh_read release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets,url)" || return 1
-  expected_android_assets="$(printf '%s\n' "${required_assets[@]}" | jq -R . | jq -sc 'sort')"
-  actual_android_assets="$(printf '%s' "${release_json}" | jq -c '
-    [.assets[]? | select(.name | startswith("OpenClaw-Android")) | .name] | sort
-  ')"
-  if [[ "${actual_android_assets}" != "${expected_android_assets}" ]]; then
-    echo "Stable release Android asset names do not match the canonical contract." >&2
-    return 1
-  fi
-
-  verify_dir="${RUNNER_TEMP}/openclaw-android-release-contract"
-  rm -rf "${verify_dir}"
-  mkdir -p "${verify_dir}"
-  gh release download "${RELEASE_TAG}" \
-    --repo "${GITHUB_REPOSITORY}" \
-    --pattern "OpenClaw-Android.apk" \
-    --pattern "OpenClaw-Android-SHA256SUMS.txt" \
-    --dir "${verify_dir}" || return 1
-  (
-    cd "${verify_dir}"
-    sha256sum --strict --check OpenClaw-Android-SHA256SUMS.txt
-  ) || return 1
-  expected_hash="$(awk '$2 == "OpenClaw-Android.apk" { print $1 }' "${verify_dir}/OpenClaw-Android-SHA256SUMS.txt")"
-  if [[ ! "${expected_hash}" =~ ^[a-f0-9]{64}$ ]]; then
-    echo "Android checksum manifest does not contain the canonical APK entry." >&2
-    return 1
-  fi
-  expected_digest="sha256:${expected_hash}"
-  actual_digest="$(printf '%s' "${release_json}" | jq -r '.assets[]? | select(.name == "OpenClaw-Android.apk") | .digest // empty')"
-  if [[ "${actual_digest}" != "${expected_digest}" ]]; then
-    echo "Android release APK digest does not match its checksum manifest." >&2
-    return 1
-  fi
-  # Explicit guard: this function doubles as an `if` predicate, where
-  # bash suppresses errexit, so a failed attestation must not fall
-  # through to the summary echo.
-  gh attestation verify "${verify_dir}/OpenClaw-Android.apk" \
-    --repo "${GITHUB_REPOSITORY}" \
-    --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/android-release.yml" \
-    --source-ref "refs/tags/${RELEASE_TAG}" \
-    --deny-self-hosted-runners || return 1
-  echo "- Android APK asset contract: verified" >> "${GITHUB_STEP_SUMMARY}"
-}
-
 dispatch_linux_mirror() {
   local parent_ref="$1" parent_full_ref="$2" parent_sha="$3" parent_run="$4" parent_attempt="$5"
   local mirror_run_id
@@ -1014,32 +953,6 @@ promote_windows_release_assets() {
   # Native promotion owns its terminal evidence; do not join it back into
   # the npm/Docker publisher after the GitHub release has been finalized.
   echo "- Windows Hub: detached; completion and failure evidence at https://github.com/${GITHUB_REPOSITORY}/actions/runs/${windows_node_run_id}" >> "$GITHUB_STEP_SUMMARY"
-}
-
-promote_android_release_asset() {
-  if ! is_android_release; then
-    return 0
-  fi
-  # Retry-safe: the asset contract is the done-condition, so a prior
-  # publish run's verified APK promotion is reused instead of
-  # re-running the Android child workflow.
-  if verify_android_release_asset_contract >/dev/null 2>&1; then
-    android_release_note="- Android APK: previously published assets verified; https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/OpenClaw-Android.apk"
-    echo "${android_release_note}" >> "${GITHUB_STEP_SUMMARY}"
-    return 0
-  fi
-
-  android_release_run_id="$(dispatch_workflow_at_ref "${RELEASE_TAG}" "${TARGET_SHA}" android-release.yml \
-    -f tag="${RELEASE_TAG}" \
-    -f release_publish_run_id="${GITHUB_RUN_ID}" \
-    -f release_publish_run_attempt="${GITHUB_RUN_ATTEMPT}" \
-    -f release_publish_branch="${PARENT_WORKFLOW_BRANCH}" \
-    -f release_publish_full_ref="${PARENT_WORKFLOW_FULL_REF}" \
-    -f release_publish_workflow_sha="${PARENT_WORKFLOW_SHA}" \
-    -f release_target_sha="${TARGET_SHA}" \
-    -f direct_release_recovery=false)" || return 1
-  android_release_note="- Android APK publication dispatched (completion not awaited): https://github.com/${GITHUB_REPOSITORY}/actions/runs/${android_release_run_id}"
-  echo "${android_release_note}" >> "${GITHUB_STEP_SUMMARY}"
 }
 
 upload_dependency_evidence_release_asset() {
@@ -1397,7 +1310,6 @@ append_release_proof_to_github_release() {
   write_clawhub_runtime_state "${clawhub_runtime_state_path}"
   clawhub_line="$(jq -r '.proofLines.normal' "${clawhub_runtime_state_path}")"
   clawhub_bootstrap_line="$(jq -r '.proofLines.bootstrap' "${clawhub_runtime_state_path}")"
-  android_line="${android_release_note}"
   proof_label="full release validation"
   proof_run_id="${FULL_RELEASE_VALIDATION_RUN_ID}"
   if [[ "${RELEASE_EVIDENCE_MODE}" == "authorized-beta-focused-v1" ]]; then
@@ -1422,7 +1334,6 @@ append_release_proof_to_github_release() {
     CLAWHUB_LINE="${clawhub_line}" \
     CLAWHUB_BOOTSTRAP_LINE="${clawhub_bootstrap_line}" \
     TELEGRAM_LINE="${telegram_line}" \
-    ANDROID_LINE="${android_line}" \
     node --input-type=module <<'NODE'
 import { writeFileSync } from "node:fs";
 
@@ -1452,7 +1363,6 @@ const section = [
       ]
     : []),
   process.env.TELEGRAM_LINE,
-  ...(process.env.ANDROID_LINE ? [process.env.ANDROID_LINE] : []),
 ].join("\n");
 
 writeFileSync(proofFile, section);

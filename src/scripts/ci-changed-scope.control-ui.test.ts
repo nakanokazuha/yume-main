@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { detectChangedScope, shouldRunIosScreenshots } from "../../scripts/ci-changed-scope.mjs";
+import { detectChangedScope } from "../../scripts/ci-changed-scope.mjs";
 
 it.each<[string, boolean, boolean]>([
   ["ui/src/pages/chat/chat-realtime.ts", true, true],
@@ -21,33 +21,31 @@ it.each<[string, boolean, boolean]>([
   expect(detectChangedScope([file])).toMatchObject({ runControlUiI18n, runUiTests });
 });
 
-it("runs browser proof and native asset builds for Mermaid inputs", () => {
+it("runs browser proof for Mermaid inputs", () => {
   const file = "packages/normalization-core/src/record-coerce.ts";
   expect(detectChangedScope([file])).toMatchObject({
     runNode: true,
     runUiTests: true,
-    runAndroid: true,
-    runMacos: true,
-    runIosBuild: true,
     runControlUiI18n: false,
   });
-  expect(shouldRunIosScreenshots([file])).toBe(true);
 });
 
 it.each([
   ["packages/normalization-core/src/record-coerce.test.ts", false],
   ["package.json", true],
 ] as const)(
-  "routes shared Node inputs through their native protocol consumers: %s",
-  (file, nativeProtocolInput) => {
+  "routes shared Node inputs without selecting removed native consumers: %s",
+  (file, packageInput) => {
     expect(detectChangedScope([file])).toMatchObject({
       runNode: true,
       runWindows: false,
-      runAndroid: nativeProtocolInput,
-      runMacos: nativeProtocolInput,
-      runIosBuild: nativeProtocolInput,
       runUiTests: false,
     });
-    expect(shouldRunIosScreenshots([file])).toBe(false);
+    expect(detectChangedScope([file])).not.toHaveProperty("runAndroid");
+    expect(detectChangedScope([file])).not.toHaveProperty("runIosBuild");
+    expect(detectChangedScope([file]).runMacosNode).toBe(false);
+    if (packageInput) {
+      expect(detectChangedScope([file]).runNode).toBe(true);
+    }
   },
 );

@@ -398,10 +398,6 @@ describe("scripts/test-projects changed-target routing", () => {
       ["test/scripts/check-composite-action-input-interpolation.test.ts"],
     ],
     [["scripts/check-no-conflict-markers.mjs"], ["test/scripts/check-no-conflict-markers.test.ts"]],
-    [
-      ["scripts/lib/restart-mac-gateway.sh"],
-      ["test/scripts/build-and-run-mac.test.ts", "test/scripts/restart-mac.test.ts"],
-    ],
     [["src/gateway/gateway-codex-harness.live.test.ts"], []],
   ])("retains precise changed owners for %j", (paths, targets) => {
     expectChangedTargets(paths, targets);
@@ -2213,7 +2209,7 @@ describe("scripts/test-projects changed-target routing", () => {
   it("skips app-only changes because app tests are separate from Vitest lanes", () => {
     expect(
       buildVitestRunPlans(["--changed", "origin/main"], process.cwd(), () => [
-        "apps/macos/OpenClaw/AppDelegate.swift",
+        "apps/linux/src/main.rs",
       ]),
     ).toStrictEqual([]);
   });

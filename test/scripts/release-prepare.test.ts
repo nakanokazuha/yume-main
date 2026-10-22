@@ -47,7 +47,6 @@ describe("release preparation arguments", () => {
       "Use only one mode flag; received --check and --check.",
     );
     expect(parseReleasePrepareArgs(["--jobs", "2", "--", "--jobs", "0x4"])).toMatchObject({
-      android: false,
       jobs: 4,
       mode: "shadow",
     });
@@ -60,7 +59,6 @@ describe("release preparation arguments", () => {
 it("rejects alpha preparation before constructing write steps", () => {
   expect(() =>
     createReleasePrepareSteps({
-      android: false,
       version: "2026.9.24-alpha.1",
       rootDir: "/repo",
       mode: "write",
@@ -72,7 +70,6 @@ it("rejects alpha preparation before constructing write steps", () => {
 describe("release preparation plan", () => {
   it("builds the write cutover from atomic versioning and scoped preflight", () => {
     const steps = createReleasePrepareSteps({
-      android: true,
       jobs: 6,
       mode: "write",
       rootDir: "/repo",
@@ -87,7 +84,6 @@ describe("release preparation plan", () => {
       "/repo",
       "--version",
       "2026.7.2-beta.1",
-      "--android",
       "--write",
     ]);
     expect(expectDefined(steps[1], "release preflight preparation step").args).toEqual([
@@ -102,7 +98,6 @@ describe("release preparation plan", () => {
 
   it("stops after a failed prerequisite and records the blocked step", () => {
     const steps = createReleasePrepareSteps({
-      android: false,
       jobs: 4,
       mode: "check",
       rootDir: "/repo",
@@ -189,7 +184,6 @@ describe("release preparation manifest", () => {
       cwd: "/repo",
       mode: "shadow",
       steps: createReleasePrepareSteps({
-        android: false,
         jobs: 4,
         mode: "shadow",
         rootDir: "/repo",

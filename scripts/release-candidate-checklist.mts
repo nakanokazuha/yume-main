@@ -1954,30 +1954,6 @@ async function runTelegramIfNeeded(
   };
 }
 
-function checkCandidateAndroidVersion(targetSha: string, tag: string) {
-  const release = parseReleaseVersion(tag.replace(/^v/u, ""));
-  if (release?.channel !== "stable") {
-    return undefined;
-  }
-  const manifest: unknown = JSON.parse(
-    run("git", ["show", `${targetSha}:apps/android/version.json`], { capture: true }),
-  );
-  const androidVersion = requireString(
-    isRecord(manifest) ? manifest.version : undefined,
-    "Android version",
-  );
-  const targetVersion = release.baseVersion;
-  const matches = androidVersion === targetVersion;
-  return {
-    status: matches ? "passed" : "warning",
-    androidVersion,
-    targetVersion,
-    message: matches
-      ? `PASS: Android version ${androidVersion} matches release train ${targetVersion}.`
-      : `WARNING: Android version ${androidVersion} does not match release train ${targetVersion}; run node --import tsx scripts/android-pin-version.ts --version ${targetVersion} before tagging, or accept that Android will not ship for this release.`,
-  };
-}
-
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const targetRoot = gitTopLevel(process.cwd());
@@ -2078,10 +2054,6 @@ async function main() {
     }
   }
   writeReleaseCandidateState(statePath, candidateState);
-  const androidVersionCheck = checkCandidateAndroidVersion(targetSha, options.tag);
-  if (androidVersionCheck) {
-    console.log(androidVersionCheck.message);
-  }
   const releaseNotesVersion = releaseNotesVersionForTag(options.tag);
   const releaseChangelog = loadReleaseNotesForTag({
     rootDir: targetRoot,
@@ -2451,7 +2423,6 @@ async function main() {
     },
     releaseNotesCheck,
     releaseNotesProvenance,
-    androidVersionCheck,
     localGeneratedCheck,
     tarball: {
       name: basename(tarballPath),
@@ -2477,7 +2448,6 @@ async function main() {
       `# ${options.tag} release candidate evidence`,
       "",
       `- target SHA: ${targetSha}`,
-      ...(androidVersionCheck ? [`- **${androidVersionCheck.message}**`] : []),
       `- full release validation: ${options.fullReleaseRunId} ${fullRun.url}`,
       `- npm preflight: ${npmProducerRunId} ${npmRun.url}`,
       ...(windowsNodeSourceRelease
@@ -2542,9 +2512,6 @@ async function main() {
     throw new Error("Publish preflight failed; resolve the reported gates before publication.");
   }
   updateReleaseCandidateState(statePath, candidateState, "completed");
-  if (androidVersionCheck) {
-    console.log(androidVersionCheck.message);
-  }
   if (prepareCommand) {
     console.log("prepare once for the release button (after creating the frozen release tag):");
     console.log(prepareCommand);

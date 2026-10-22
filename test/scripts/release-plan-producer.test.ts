@@ -207,9 +207,6 @@ function buildFixtureRepo(root: string, version: string, options: FixtureOptions
       "          promote_windows_release_assets() {",
       "            dispatch_workflow windows-node-release.yml",
       "          }",
-      "          promote_android_release_asset() {",
-      '            dispatch_workflow_at_ref "${RELEASE_TAG}" "${TARGET_SHA}" android-release.yml',
-      "          }",
       "          dispatch_workflow plugin-npm-release.yml",
       "  publish_docker:",
       "    uses: ./.github/workflows/docker-release.yml",
@@ -219,7 +216,6 @@ function buildFixtureRepo(root: string, version: string, options: FixtureOptions
     ].join("\n"),
   );
   for (const name of [
-    "android-release.yml",
     "docker-release.yml",
     "linux-app-release-request.yml",
     "plugin-npm-release.yml",
@@ -799,7 +795,6 @@ describe("release plan producer", () => {
       { name: "openclaw", targets: ["npm"], version: "2026.8.1-beta.2" },
     ]);
     expect(plan.inventory.platforms).toEqual([
-      { id: "android", source: ".github/workflows/android-release.yml" },
       { id: "docker", source: ".github/workflows/docker-release.yml" },
       {
         id: "vcr",
@@ -1533,7 +1528,6 @@ mutateModule.syncBuiltinESMExports();
     }) as VerifiedReleaseInventory;
     expect(inventory.inventory).toEqual(plan.inventory);
     expect(plan.inventory.platforms).toEqual([
-      { id: "android", source: ".github/workflows/android-release.yml" },
       { id: "docker", source: ".github/workflows/docker-release.yml" },
       { id: "linux", source: ".github/workflows/linux-app-release-request.yml" },
       { id: "vcr", source: ".github/workflows/vercel-container-registry-publish.yml" },
@@ -1542,7 +1536,7 @@ mutateModule.syncBuiltinESMExports();
     expect(
       verifyReleasePlanLock(canonicalReleasePlanLockJson(createReleasePlanLock(plan)), params).plan,
     ).toEqual(plan);
-    for (const omitted of ["android", "linux", "windows"]) {
+    for (const omitted of ["linux", "windows"]) {
       const partial = structuredClone(plan);
       partial.inventory.platforms = partial.inventory.platforms.filter(({ id }) => id !== omitted);
       expect(() =>
@@ -1596,7 +1590,7 @@ mutateModule.syncBuiltinESMExports();
       }
     }
     if (fault === "unlinked") {
-      for (const id of ["publish_windows", "publish_android", "publish_linux"]) {
+      for (const id of ["publish_windows", "publish_linux"]) {
         delete publisher.jobs[id];
       }
     }
@@ -1641,7 +1635,7 @@ mutateModule.syncBuiltinESMExports();
     if (fault === "dormant" || fault === "unlinked") {
       const ids = produceReleasePlan(params).inventory.platforms.map(({ id }) => id);
       expect(ids).toEqual(
-        fault === "unlinked" ? ["docker", "vcr"] : ["android", "docker", "linux", "vcr", "windows"],
+        fault === "unlinked" ? ["docker", "vcr"] : ["docker", "linux", "vcr", "windows"],
       );
     } else {
       expect(() => produceReleasePlan(params)).toThrow(/platform|release-publish-children/u);

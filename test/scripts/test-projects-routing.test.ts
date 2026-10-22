@@ -232,11 +232,6 @@ describe("test-projects args", () => {
       config: "test/vitest/vitest.infra.config.ts",
     },
     {
-      title: "keeps native artifact fixtures in the serial tooling owner",
-      target: "test/scripts/mac-elevation-artifact.test.ts",
-      config: "test/vitest/vitest.tooling.config.ts",
-    },
-    {
       title: "routes fake-timer unit-fast targets to the serial fake-timer config",
       target: "src/acp/translator.stop-reason.test.ts",
       config: "test/vitest/vitest.unit-fast-fake-timers.config.ts",

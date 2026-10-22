@@ -3954,7 +3954,7 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
     "package.json",
     "patches/vitest@5.0.1.patch",
     ".github/workflows/ci.yml",
-    "apps/ios/fastlane/Fastfile",
+    "scripts/release-version.ts",
     "extensions/matrix/scripts/build.mjs",
   ])("retains the complete tooling family when owner %s changes", (changedPath) => {
     expect(

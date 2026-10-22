@@ -2031,12 +2031,7 @@ describe("release validation no-push transport", () => {
     expect(resolveClawHubPlan.run).toContain("plan_args+=(--skip-clawhub)");
     expect(dispatchRun).toContain("-f npm_dist_tag=extended-stable");
     expect(coreStart.run).toContain('-f plugin_npm_run_id="${plugin_npm_run_id}"');
-    for (const nativeJob of [
-      "qualify_android_native",
-      "publish_android",
-      "publish_linux",
-      "publish_windows",
-    ]) {
+    for (const nativeJob of ["publish_linux", "publish_windows"]) {
       expect(job(releasePublish, nativeJob).if).toContain(
         "inputs.npm_dist_tag != 'extended-stable'",
       );

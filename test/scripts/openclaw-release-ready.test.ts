@@ -496,7 +496,6 @@ describe("release readiness executable handoff", () => {
         fixture.scripts,
         "lib/release-publish-children.sh",
         `
-      is_android_release() { return 1; }
       is_stable_release() { return 1; }
       verify_release_tag_target() { :; }
       render_github_release_notes() { :; }

@@ -66,15 +66,8 @@ export function runCiManifestFixture(options: {
   repository?: string;
   eventName?: "pull_request" | "push" | "workflow_dispatch" | "schedule";
   historicalCompatibility?: boolean;
-  iosCapabilities?: boolean;
-  iosBuildCapability?: boolean;
-  androidCiCapabilities?: boolean;
-  androidAccessNativeCapability?: boolean;
-  nativeI18nCapabilities?: boolean;
   macosNodeParts?: boolean;
   windowsPlanner?: boolean;
-  openClawKitTests?: boolean;
-  protocolCoverage?: boolean;
   packageVersion?: string;
   qaSmokePlan?: boolean;
   formatCheck?: boolean;
@@ -400,22 +393,11 @@ export function runCiManifestFixture(options: {
         }
       }
     }
-    const iosCapabilities = options.iosCapabilities ?? options.bundledPlanner;
-    const iosBuildCapability = options.iosBuildCapability ?? iosCapabilities;
-    const nativeI18nCapabilities = options.nativeI18nCapabilities ?? options.bundledPlanner;
     const macosNodeParts = options.macosNodeParts ?? options.bundledPlanner;
     const packageScripts = options.bundledPlanner
       ? {
-          ...(nativeI18nCapabilities
-            ? {
-                "android:i18n:check": "true",
-                "apple:i18n:check": "true",
-                "native:i18n:check": "true",
-              }
-            : {}),
-          ...(iosBuildCapability ? { "ios:build": "true" } : {}),
           ...(macosNodeParts
-            ? Object.fromEntries([1, 2, 3].map((part) => [`test:macos:ci:${part}`, "true"]))
+            ? Object.fromEntries([1, 2].map((part) => [`test:macos:ci:${part}`, "true"]))
             : {}),
           "check:assertion-safety": "true",
           "check:max-lines-ratchet": "true",
@@ -581,30 +563,6 @@ export function runCiManifestFixture(options: {
       mkdirSync(path.dirname(smokePlan), { recursive: true });
       writeFileSync(smokePlan, "export {};\n");
     }
-    if (iosCapabilities) {
-      for (const name of [
-        "install-swift-tools.sh",
-        "install-xcodegen.sh",
-        "lint-swift.sh",
-        "format-swift.sh",
-      ]) {
-        writeFileSync(path.join(root, "scripts", name), "#!/bin/sh\n");
-      }
-    }
-    if (options.protocolCoverage ?? options.bundledPlanner) {
-      writeFileSync(path.join(root, "scripts", "check-protocol-event-coverage.mjs"), "");
-    }
-    if (options.androidAccessNativeCapability ?? options.bundledPlanner) {
-      const nativeTest = path.join(
-        root,
-        "apps/android/app/src/androidTest/java/ai/openclaw/app/gateway/CloudflareAccessNativeTest.kt",
-      );
-      mkdirSync(path.dirname(nativeTest), { recursive: true });
-      writeFileSync(
-        nativeTest,
-        "package ai.openclaw.app.gateway\n\nclass CloudflareAccessNativeTest\n",
-      );
-    }
     const targetWorkflow = path.join(root, ".github", "workflows", "ci.yml");
     mkdirSync(path.dirname(targetWorkflow), { recursive: true });
     writeFileSync(
@@ -612,12 +570,6 @@ export function runCiManifestFixture(options: {
       [
         ...((options.formatCheck ?? options.bundledPlanner)
           ? ["pnpm format:check", "pnpm format:check"]
-          : []),
-        ...((options.androidCiCapabilities ?? options.bundledPlanner)
-          ? ["android-ci-contract-v2"]
-          : []),
-        ...((options.openClawKitTests ?? options.bundledPlanner)
-          ? ["openclawkit-tests-contract-v1"]
           : []),
         ...(options.bundledPlanner ? ["docker-seed-e2e-contract-v1"] : []),
         ...((options.publishedDriverUpdateCapability ?? options.bundledPlanner)
@@ -652,7 +604,7 @@ export function runCiManifestFixture(options: {
     );
     const trustedReleasePolicy = path.join(root, ".ci-harness/scripts/lib");
     mkdirSync(trustedReleasePolicy, { recursive: true });
-    for (const name of ["release-context.mjs", "release-version.mjs", "ci-ios-smoke-plan.mjs"]) {
+    for (const name of ["release-context.mjs", "release-version.mjs"]) {
       writeFileSync(path.join(trustedReleasePolicy, name), readFileSync(`scripts/lib/${name}`));
     }
     copyFileSync(
@@ -766,11 +718,7 @@ export function runCiManifestFixture(options: {
         OPENCLAW_CI_TARGET_CONTEXT_TARGET:
           options.targetContextCompatibility === true ? "true" : "false",
         OPENCLAW_CI_REPOSITORY: options.repository ?? "openclaw/openclaw",
-        OPENCLAW_CI_RUN_ANDROID: "true",
         OPENCLAW_CI_RUN_CONTROL_UI_I18N: "true",
-        OPENCLAW_CI_RUN_IOS_BUILD: "true",
-        OPENCLAW_CI_RUN_MACOS: "true",
-        OPENCLAW_CI_RUN_NATIVE_I18N: "true",
         OPENCLAW_CI_RUN_NODE: String(options.runNode ?? true),
         OPENCLAW_CI_RUN_NODE_FAST_CI_ROUTING: String(options.nodeFastCiRouting ?? false),
         OPENCLAW_CI_RUN_NODE_FAST_ONLY: String(options.nodeFastOnly ?? false),

@@ -1,26 +1,19 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import { verifyAndroidNativeCi } from "./android-native-ci.mjs";
 import { validateStablePluginNpmBootstrapApproval } from "./plugin-npm-bootstrap-approval.mjs";
-import {
-  runReleaseToolingGh,
-  validateReleasePublishParentRun,
-  verifyReleaseToolingIdentity,
-} from "./release-tooling-identity.mjs";
 
 const releasePublishRunId = process.env.RELEASE_PUBLISH_RUN_ID ?? "";
 const expectedBranch = process.env.EXPECTED_WORKFLOW_BRANCH ?? "";
 const directRecovery = process.env.DIRECT_RELEASE_RECOVERY === "true";
 const allowCompletedSuccessfulParent = process.env.ALLOW_COMPLETED_SUCCESSFUL_PARENT === "true";
 const approvalPath = process.env.APPROVAL_PATH ?? "";
-const approvalKind = process.env.RELEASE_APPROVAL_KIND ?? "android";
+const approvalKind = process.env.RELEASE_APPROVAL_KIND ?? "parent";
 const expectedRunAttempt = process.env.EXPECTED_RUN_ATTEMPT ?? "";
 const expectedWorkflowFullRef = process.env.EXPECTED_WORKFLOW_FULL_REF ?? "";
 const expectedWorkflowSha = process.env.EXPECTED_WORKFLOW_SHA ?? "";
 const childWorkflowSha = process.env.CHILD_WORKFLOW_SHA ?? "";
-const run =
-  approvalKind === "android" && approvalPath ? null : JSON.parse(fs.readFileSync(0, "utf8"));
+const run = approvalPath ? null : JSON.parse(fs.readFileSync(0, "utf8"));
 
 function fail(message) {
   console.error(message);
@@ -75,22 +68,7 @@ if (approvalPath) {
   const approval = JSON.parse(fs.readFileSync(approvalPath, "utf8"));
   let expectedApproval;
   let mismatchMessage;
-  if (approvalKind === "android") {
-    expectedApproval = {
-      version: approval.version === 3 ? 3 : 2,
-      repository: process.env.GITHUB_REPOSITORY,
-      workflow: "OpenClaw Release Publish",
-      parentRunId: releasePublishRunId,
-      parentRunAttempt: positiveRunAttempt(expectedRunAttempt),
-      workflowBranch: expectedBranch,
-      workflowFullRef: expectedWorkflowFullRef,
-      parentWorkflowSha: expectedWorkflowSha,
-      releaseTag: process.env.RELEASE_TAG,
-      targetSha: process.env.RELEASE_TARGET_SHA,
-      ...(approval.version === 3 ? { nativeCi: approval.nativeCi } : {}),
-    };
-    mismatchMessage = "Attested Android release approval does not match this run request.";
-  } else if (approvalKind === "clawhub-bootstrap") {
+  if (approvalKind === "clawhub-bootstrap") {
     if (!/^[a-f0-9]{40}$/u.test(childWorkflowSha)) {
       fail("Plugin ClawHub New workflow SHA must be a full lowercase commit SHA.");
     }
@@ -133,62 +111,6 @@ if (approvalPath) {
   }
   if (JSON.stringify(approval) !== JSON.stringify(expectedApproval)) {
     fail(mismatchMessage);
-  }
-  if (approvalKind === "android") {
-    const tag = process.env.RELEASE_TAG;
-    const target = process.env.RELEASE_TARGET_SHA;
-    if (resolveRemoteReleaseTag(tag) !== target) {
-      fail(`Release tag ${tag} no longer resolves to approved target ${target}.`);
-    }
-    const release = JSON.parse(
-      runReleaseToolingGh([
-        "release",
-        "view",
-        tag,
-        "--repo",
-        process.env.GITHUB_REPOSITORY,
-        "--json",
-        "tagName,isPrerelease,createdAt",
-      ]),
-    );
-    if (release.tagName !== tag || release.isPrerelease !== false) {
-      fail("Android publication requires the exact approved stable GitHub release.");
-    }
-    const buildTimestamp = new Date(release.createdAt).toISOString().replace(/\.000Z$/u, "Z");
-    const identity = verifyReleaseToolingIdentity({
-      allowPrevalidatedRef: /^release\/[0-9]{4}\.(?:[1-9]|1[0-2])\.[1-9][0-9]*$/u.test(
-        expectedBranch,
-      ),
-      repository: process.env.GITHUB_REPOSITORY,
-      workflowFullRef: expectedWorkflowFullRef,
-      workflowRef: expectedBranch,
-      workflowSha: expectedWorkflowSha,
-    });
-    // Native qualification and parent authority must survive child queue/build
-    // time and every preceding target, tooling, and release-asset lookup.
-    verifyAndroidNativeCi(approval);
-    const currentRun = JSON.parse(
-      runReleaseToolingGh([
-        "api",
-        `repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${releasePublishRunId}`,
-        "--method",
-        "GET",
-      ]),
-    );
-    // Apps may attach after npm and GitHub publication complete. Keep the exact
-    // approval binding valid for a successful parent without requiring it to wait.
-    validateReleasePublishParentRun({
-      identity,
-      releasePublishFullRef: expectedWorkflowFullRef,
-      releasePublishParentStatePolicy: directRecovery ? "manual-recovery" : "active-or-success",
-      releasePublishRef: expectedBranch,
-      releasePublishRunAttempt: expectedRunAttempt,
-      releasePublishRunId,
-      repository: process.env.GITHUB_REPOSITORY,
-      run: currentRun,
-    });
-    process.stdout.write(`${buildTimestamp}\n`);
-    process.exit(0);
   }
 }
 

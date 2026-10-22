@@ -244,31 +244,21 @@ describe("resolveBuildAllSteps", () => {
     },
   );
 
-  it.each([
-    ["full", "0"],
-    ["full", "1"],
-    ["package", "0"],
-    ["package", "1"],
-    ["ciArtifacts", "0"],
-  ])(
-    "generates native protocol models before compiling %s with skip-dts=%s",
-    async (profile, skipDts) => {
+  it.each(["full", "package", "ciArtifacts"])(
+    "builds the retained TypeScript runtime profile %s without generating native clients",
+    async (profile) => {
       const runner = buildRunner();
       const result = await runBuildAllSteps(profile, {
         ...runner,
         cacheEnabled: false,
-        env: { OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: skipDts },
+        env: { OPENCLAW_RUN_NODE_SKIP_DTS_BUILD: "0" },
       });
       expect(result.exitCode).toBe(0);
       const invocations = runner.runStep.mock.calls.map(([invocation]) => invocation);
-      const generation = invocations.findIndex(({ args }) =>
-        args.includes("scripts/prepare-native-protocol.mjs"),
+      expect(invocations.some(({ args }) => args.includes("scripts/prepare-native-protocol.mjs"))).toBe(
+        false,
       );
-      const compilation = invocations.findIndex(({ args }) =>
-        args.includes("scripts/tsdown-build.mts"),
-      );
-      expect(generation).toBeGreaterThanOrEqual(0);
-      expect(compilation).toBeGreaterThan(generation);
+      expect(invocations.some(({ args }) => args.includes("scripts/tsdown-build.mts"))).toBe(true);
     },
   );
 

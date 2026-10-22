@@ -12,12 +12,6 @@ const DEFAULT_GIT_TIMEOUT_MS = 60_000;
 const MAX_GIT_TIMEOUT_MS = 10 * 60_000;
 const GIT_TIMEOUT_ENV = "OPENCLAW_RELEASE_METADATA_GIT_TIMEOUT_MS";
 
-const VERSION_ONLY_TEXT_PATHS = new Set([
-  "apps/android/Config/Version.properties",
-  "apps/android/version.json",
-  "apps/macos/Sources/OpenClaw/Resources/Info.plist",
-]);
-
 function normalizePath(input: string) {
   return input
     .trim()
@@ -146,12 +140,6 @@ function stripPackageVersion(raw: string) {
   return stableStringify(parsed);
 }
 
-function normalizeVersionText(raw: string) {
-  return raw
-    .replace(/\b20\d{2}\.\d{1,2}\.\d{1,2}(?:-beta\.\d+|-\d+)?\b/gu, "<OPENCLAW_VERSION>")
-    .replace(/\b20\d{6}(?:\d{2})?\b/gu, "<OPENCLAW_BUILD>");
-}
-
 function fail(message: string) {
   console.error(`[release-metadata] ${message}`);
   process.exitCode = 1;
@@ -171,16 +159,6 @@ export function main(argv: string[] = process.argv.slice(2)) {
     const { before, after } = readBeforeAfter(args, "package.json");
     if (stripPackageVersion(before) !== stripPackageVersion(after)) {
       fail("package.json changed outside the top-level version field");
-    }
-  }
-
-  for (const filePath of paths) {
-    if (!VERSION_ONLY_TEXT_PATHS.has(filePath)) {
-      continue;
-    }
-    const { before, after } = readBeforeAfter(args, filePath);
-    if (normalizeVersionText(before) !== normalizeVersionText(after)) {
-      fail(`${filePath}: changed outside recognized version/build literals`);
     }
   }
 

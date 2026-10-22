@@ -4,7 +4,6 @@ const HOSTED_SENTINELS = new Set([
   "check-prod-types",
   "check-docs",
   "control-ui-i18n",
-  "native-i18n",
 ]);
 const MAX_WAIT_SECONDS = 60;
 const FRESHNESS_MS = 30 * 60 * 1_000;

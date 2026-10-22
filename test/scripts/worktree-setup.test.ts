@@ -91,7 +91,7 @@ function makePreparationFixture() {
   }
   write(".openclaw/worktree-profiles/gateway", "scripts\npackages\nextensions\nsrc\n");
   write("src/gateway/input.ts", "export {};\n");
-  write("apps/android/build.gradle.kts", "// Omitted by the synthetic gateway cone.\n");
+  write("apps/linux/src-tauri/target/debug/build", "// Omitted by the synthetic gateway cone.\n");
 
   // Preparation validates these inputs but no retained case may reach a build.
   write("scripts/tsx.mjs", "export {};\n");
@@ -177,7 +177,7 @@ function makePreparationFixture() {
       "packages/support/node_modules",
       "extensions/isolated/node_modules",
       "ui/node_modules",
-      "apps/android/build",
+      "apps/linux/src-tauri/target",
     ]) {
       expect(fs.existsSync(path.join(rootDir, relative)), relative).toBe(false);
     }

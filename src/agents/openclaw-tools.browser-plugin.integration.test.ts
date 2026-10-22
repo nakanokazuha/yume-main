@@ -137,7 +137,7 @@ describe("createOpenClawTools browser plugin integration", () => {
     await fs.copyFile(
       path.join(
         process.cwd(),
-        "apps/ios/WatchApp/Assets.xcassets/OpenClawIcon.imageset/openclaw-icon.png",
+        "ui/public/favicon-32.png",
       ),
       mediaUrl,
     );

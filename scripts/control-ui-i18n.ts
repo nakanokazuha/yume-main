@@ -335,8 +335,6 @@ function buildSystemPrompt(targetLocale: string, glossary: readonly GlossaryEntr
     "- The JSON must be an object whose keys exactly match the provided ids.",
     "- Translate all English prose; keep code, URLs, product names, CLI commands, config keys, and env vars in English.",
     "- Preserve placeholders exactly, including {count}, {time}, {shown}, {total}, and similar tokens.",
-    "- Preserve Swift interpolation expressions such as \\(name) exactly, including the backslash and parentheses.",
-    "- Preserve Kotlin interpolation expressions such as $name and ${value} exactly.",
     "- Use natural target-language punctuation and spacing in translated prose. Keep ellipses and arrows unchanged when they are UI indicators.",
     "- Preserve exact syntax, punctuation, and casing in code, URLs, commands, placeholders, identifiers, and clearly identified literal third-party UI labels.",
     "- Preserve Markdown, inline code, HTML tags, and slash commands when present.",
@@ -376,7 +374,7 @@ export function buildBatchPrompt(
   const lines = ["Translate this JSON object.", "Return ONLY a JSON object with the same keys."];
   if (items.some((item) => item.sourcePath)) {
     lines.push(
-      "For object values, translate only text. Use sourcePath and the bounded sourceContext excerpt to understand the native UI owner and disambiguate its meaning; these fields are context, not text to translate.",
+      "For object values, translate only text. Use sourcePath and the bounded sourceContext excerpt to understand the UI owner and disambiguate its meaning; these fields are context, not text to translate.",
       "Preserve the source order and meaning of unnumbered printf arguments. Rephrase surrounding prose rather than swapping the roles of argument values. Preserve literal percent escapes exactly.",
       "Return each id mapped directly to its translated string, without the context fields.",
     );
@@ -715,49 +713,6 @@ async function translateBatch(
     }
   }
   throw lastError ?? new Error("translation failed");
-}
-
-type NativeTranslationEntry = {
-  id: string;
-  source: string;
-  sourcePath: string;
-  sourceContext?: string;
-};
-
-export async function translateNativeEntries(
-  entries: readonly NativeTranslationEntry[],
-  targetLocale: string,
-  glossary: readonly GlossaryEntry[] = [],
-  validateTranslation?: TranslationValidator,
-): Promise<Map<string, string>> {
-  if (!hasTranslationProvider()) {
-    throw new Error("native app translation requires OPENAI_API_KEY or ANTHROPIC_API_KEY");
-  }
-  const pending = entries.map((entry) => ({
-    cacheKey: cacheKey(entry.id, hashControlUiTranslationText(entry.source), targetLocale),
-    key: entry.id,
-    text: entry.source,
-    textHash: hashControlUiTranslationText(entry.source),
-    sourcePath: entry.sourcePath,
-    sourceContext: entry.sourceContext,
-  }));
-  const batches = buildTranslationBatches(pending);
-  const client = new TranslationClient(targetLocale, glossary);
-  const translated = new Map<string, string>();
-  for (const [batchIndex, batch] of batches.entries()) {
-    const result = await translateBatch(client, batch, {
-      locale: targetLocale,
-      localeCount: 1,
-      localeIndex: 1,
-      batchCount: batches.length,
-      batchIndex: batchIndex + 1,
-      validateTranslation,
-    });
-    for (const [id, value] of result) {
-      translated.set(id, value);
-    }
-  }
-  return translated;
 }
 
 type SyncOutcome = {

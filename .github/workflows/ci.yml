@@ -27,11 +27,6 @@ on:
         required: false
         default: false
         type: boolean
-      include_android:
-        description: Run Android lanes for this manual CI dispatch.
-        required: false
-        default: false
-        type: boolean
       validation_tier:
         description: Full release coverage, or complete main coverage without release-only proofs.
         required: false
@@ -39,7 +34,7 @@ on:
         type: choice
         options: [full, main]
       release_scope:
-        description: Release qualification scope; npm-beta and npm-stable defer native apps for a validated exact release target.
+        description: Release qualification scope for an exact release target.
         required: false
         default: full
         type: choice
@@ -103,9 +98,6 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  IOS_SCREENSHOT_FASTLANE_VERSION: "2.240.1"
-  IOS_SCREENSHOT_NODE_VERSION: "24.16.0"
-  IOS_SCREENSHOT_XCODE_VERSION: "Xcode 27.0 Build version 27A266a"
   NODE_VERSION: "24.21.0"
 
 jobs:
@@ -150,8 +142,6 @@ jobs:
       docker_seed_lanes: ${{ steps.manifest.outputs.docker_seed_lanes }}
       # published-driver-update-contract-v1: older frozen targets omit this cell.
       run_published_driver_update: ${{ steps.manifest.outputs.run_published_driver_update }}
-      run_macos: ${{ steps.manifest.outputs.run_macos }}
-      run_android: ${{ steps.manifest.outputs.run_android }}
       run_skills_python: ${{ steps.manifest.outputs.run_skills_python }}
       run_skills_python_job: ${{ steps.manifest.outputs.run_skills_python_job }}
       run_windows: ${{ steps.manifest.outputs.run_windows }}
@@ -219,25 +209,10 @@ jobs:
       run_ui_real_gateway: ${{ steps.manifest.outputs.run_ui_real_gateway }}
       ui_e2e_matrix: ${{ steps.manifest.outputs.ui_e2e_matrix }}
       ui_real_gateway_matrix: ${{ steps.manifest.outputs.ui_real_gateway_matrix }}
-      run_native_i18n: ${{ steps.manifest.outputs.run_native_i18n }}
-      strict_native_i18n: ${{ github.event_name == 'workflow_dispatch' && !inputs.release_gate && 'true' || steps.changed_scope.outputs.strict_native_i18n }}
       run_checks_windows: ${{ steps.manifest.outputs.run_checks_windows }}
       checks_windows_matrix: ${{ steps.manifest.outputs.checks_windows_matrix }}
       run_macos_node: ${{ steps.manifest.outputs.run_macos_node }}
       macos_node_matrix: ${{ steps.manifest.outputs.macos_node_matrix }}
-      run_macos_swift: ${{ steps.manifest.outputs.run_macos_swift }}
-      run_openclawkit_tests: ${{ steps.manifest.outputs.run_openclawkit_tests }}
-      run_ios_build: ${{ steps.manifest.outputs.run_ios_build }}
-      run_ios_voice_cleanup_tests: ${{ steps.manifest.outputs.run_ios_voice_cleanup_tests }}
-      run_ios_lifecycle_tests: ${{ steps.manifest.outputs.run_ios_lifecycle_tests }}
-      ios_simulator_selection: ${{ steps.manifest.outputs.ios_simulator_selection }}
-      run_ios_screenshots: ${{ steps.changed_scope.outputs.run_ios_screenshots }}
-      run_android_screenshots: ${{ steps.manifest.outputs.run_android_screenshots }}
-      run_android_job: ${{ steps.manifest.outputs.run_android_job }}
-      run_android_access_native: ${{ steps.manifest.outputs.run_android_access_native }}
-      use_compatible_android_ci: ${{ steps.manifest.outputs.use_compatible_android_ci }}
-      run_protocol_event_coverage: ${{ steps.manifest.outputs.run_protocol_event_coverage }}
-      android_matrix: ${{ steps.manifest.outputs.android_matrix }}
     steps:
       - name: Validate release-gate dispatch
         if: github.event_name == 'workflow_dispatch' && inputs.release_gate
@@ -757,13 +732,11 @@ jobs:
           def checkout_harness(sha):
               action = ".github/actions/setup-node-env/action.yml"
               node_setup_scripts = ("scripts/lib/pnpm-lockfile-documents.mjs",)
-              evidence_scripts = ("scripts/ios-screenshot-evidence.mjs", "scripts/lib/direct-run.mjs", "scripts/ci-static-step.sh")
-              platform_scripts = ("scripts/lib/swift-toolchain.sh", "scripts/lib/ci-ios-smoke-plan.mjs", "scripts/ci-xcodebuild.py")
+              evidence_scripts = ("scripts/lib/direct-run.mjs", "scripts/ci-static-step.sh")
               upgrade_scripts = ("scripts/lib/release-upgrade-baseline.mjs", "scripts/lib/release-version.mjs", "scripts/lib/canonical-json.mjs", "scripts/lib/upgrade-survivor-policy.mjs", "scripts/lib/upgrade-survivor-scenarios.json")
               # Preflight imports these siblings by file-relative paths.
               preflight_scripts = (
                   "scripts/ci-build-manifest.mjs",
-                  "scripts/lib/ci-ios-smoke-plan.mjs",
                   "scripts/lib/release-context.mjs",
                   "scripts/lib/release-version.mjs",
               )
@@ -798,8 +771,6 @@ jobs:
                       pathspecs += evidence_scripts
                   elif kind == "preflight":
                       pathspecs += preflight_scripts
-                  if kind == "platform":
-                      pathspecs += platform_scripts
                   if kind == "linux-node":
                       pathspecs += linux_node_scripts
                   paths = git_output(workspace, "ls-files", "-z", "--", *pathspecs).split("\0")[:-1]
@@ -810,8 +781,6 @@ jobs:
                   sparse_paths = ["/.github/actions/", *(f"/{path}" for path in node_setup_scripts)]
                   if kind in ("platform", "linux-node"):
                       sparse_paths += [f"/{path}" for path in evidence_scripts]
-                  if kind == "platform":
-                      sparse_paths += [f"/{path}" for path in platform_scripts]
                   if kind == "linux-node":
                       sparse_paths += [f"/{path}" for path in linux_node_scripts]
                   # Rooted non-cone patterns keep the kind-owned workflow files exact.
@@ -844,7 +813,7 @@ jobs:
                   subprocess.run(["find", workspace, "-mindepth", "1", "-maxdepth", "1",
                                   "-exec", "rm", "-rf", "{}", "+"], check=True)
               run_git(workspace, "init", workspace)
-              if kind in ("linux-node", "android"):
+              if kind == "linux-node":
                   run_git(workspace, "config", "--global", "--add", "safe.directory", workspace)
               run_git(workspace, "config", "gc.auto", "0")
               run_git(workspace, "remote", "add", "origin", remote)
@@ -853,7 +822,7 @@ jobs:
                   if kind == "preflight" and resolve_ref("HEAD") == os.environ["WORKFLOW_SHA"]:
                       checkout_harness(os.environ["WORKFLOW_SHA"])
                   return
-              target = "refs/remotes/origin/ci-target" if kind in ("linux-node", "android") else "refs/remotes/origin/checkout"
+              target = "refs/remotes/origin/ci-target" if kind == "linux-node" else "refs/remotes/origin/checkout"
               sha = "refs/heads/main" if kind == "clawhub" else os.environ["CHECKOUT_SHA"]
               refs = [f"+{sha}:{target}"]
               base = os.environ.get("CHECKOUT_BASE_SHA") if kind == "linux-node" else None
@@ -865,11 +834,7 @@ jobs:
               fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
                     retry_codes=(124, 137) if kind == "skills" else ())
               run_git(workspace, "checkout", *(["--force"] if reset else []), "--detach",
-                      sha if kind in ("linux-node", "android") else target)
-              if kind == "android":
-                  if not os.access(os.path.join(workspace, "apps/android/gradlew"), os.X_OK):
-                      raise GitFailure(1)
-                  return
+                      sha if kind == "linux-node" else target)
               if kind in ("clawhub", "skills"):
                   return
               checkout_harness(sha)
@@ -911,7 +876,7 @@ jobs:
               del token
               if kind == "clawhub":
                   workspace = os.path.join(workspace, "clawhub-source")
-              reset = kind in ("linux-node", "android", "clawhub")
+              reset = kind in ("linux-node", "clawhub")
               label = "ClawHub checkout" if kind == "clawhub" else "checkout"
               started_at = time.monotonic()
               try:
@@ -1438,8 +1403,6 @@ jobs:
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n\n`);
           EOF
 
-      # android-ci-contract-v2: frozen targets support the current Android CI tasks.
-      # android-ci-contract-v3: phone variants, Wear modules, Android lint, benchmark, and ktlint.
       # ui-e2e-projects-contract-v1: named projects are declared by the target's UI E2E config.
       - name: Build CI manifest
         id: manifest
@@ -1449,13 +1412,7 @@ jobs:
           OPENCLAW_CI_RUN_NODE: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true') && 'true' || steps.changed_scope.outputs.run_node || 'false' }}
           OPENCLAW_CI_NODE_TEST_DATA_ONLY: ${{ steps.changed_scope.outputs.node_test_data_only || 'false' }}
           OPENCLAW_CI_NODE_SELECTION: ${{ vars.OPENCLAW_CI_NODE_SELECTION }}
-          # release_gate retains the PR Apple scope.
-          OPENCLAW_CI_RUN_MACOS: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && !inputs.release_gate && 'true' || steps.changed_scope.outputs.run_macos || 'false' }}
           OPENCLAW_CI_RUN_MACOS_NODE: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && !inputs.release_gate && 'true' || steps.changed_scope.outputs.run_macos_node || 'false' }}
-          OPENCLAW_CI_RUN_IOS_BUILD: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && !inputs.release_gate && 'true' || steps.changed_scope.outputs.run_ios_build || 'false' }}
-          OPENCLAW_CI_RUN_IOS_SCREENSHOTS: ${{ steps.changed_scope.outputs.run_ios_screenshots || 'false' }}
-          OPENCLAW_CI_RUN_ANDROID_SCREENSHOTS: ${{ steps.changed_scope.outputs.run_android_screenshots || 'false' }}
-          OPENCLAW_CI_RUN_ANDROID: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && ((inputs.release_gate && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true')) || inputs.include_android) && 'true' || steps.changed_scope.outputs.run_android || 'false' }}
           OPENCLAW_CI_RUN_WINDOWS: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && !inputs.release_gate && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true') && 'true' || steps.changed_scope.outputs.run_windows || 'false' }}
           OPENCLAW_CI_RUN_NODE_FAST_ONLY: ${{ github.event_name == 'workflow_dispatch' && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true') && 'false' || steps.changed_scope.outputs.run_node_fast_only || 'false' }}
           OPENCLAW_CI_RUN_NODE_FAST_PLUGIN_CONTRACTS: ${{ github.event_name == 'workflow_dispatch' && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true') && 'false' || steps.changed_scope.outputs.run_node_fast_plugin_contracts || 'false' }}
@@ -1464,9 +1421,7 @@ jobs:
           OPENCLAW_CI_RUN_CONTROL_UI_I18N: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true') && 'true' || steps.changed_scope.outputs.run_control_ui_i18n || 'false' }}
           OPENCLAW_CI_RUN_UI_TESTS: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && !inputs.release_gate && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true') && 'true' || steps.changed_scope.outputs.run_ui_tests || 'false' }}
           OPENCLAW_CI_UI_E2E_FULL: ${{ vars.OPENCLAW_CI_UI_E2E_FULL || 'false' }}
-          OPENCLAW_CI_IOS_SIMULATOR_FULL: ${{ vars.OPENCLAW_CI_IOS_SIMULATOR_FULL || 'false' }}
           OPENCLAW_CI_EXTENSION_LINT_FULL: ${{ vars.OPENCLAW_CI_EXTENSION_LINT_FULL || 'false' }}
-          OPENCLAW_CI_RUN_NATIVE_I18N: ${{ github.event_name == 'schedule' && 'true' || github.event_name == 'workflow_dispatch' && (steps.runner_profile.outputs.node_runner_backend != 'runson' && steps.runner_profile.outputs.ci_qualification != 'true') && 'true' || steps.changed_scope.outputs.run_native_i18n || 'false' }}
           OPENCLAW_CI_CHANGED_PATHS_FILE: ${{ steps.changed_scope.outputs.changed_paths_file }}
           OPENCLAW_CI_CHANGED_PATHS_JSON: ${{ steps.changed_scope.outputs.changed_paths_json || 'null' }}
           OPENCLAW_CI_CHANGED_BASE: *diff_base
@@ -1502,21 +1457,6 @@ jobs:
             manifest_node_args+=(--import tsx)
           fi
           node "${manifest_node_args[@]}" .ci-harness/scripts/ci-build-manifest.mjs
-
-      - name: Check mobile protocol event coverage
-        if: steps.manifest.outputs.run_protocol_event_coverage == 'true'
-        env:
-          OPENCLAW_CI_CHECKOUT_REVISION: *target_sha
-          OPENCLAW_CI_WORKFLOW_REVISION: *workflow_sha
-        run: |
-          # Different-revision dispatches may need their candidate-owned tsx
-          # shim; current workflow source runs the dependency-free .mts owner.
-          if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ] &&
-            [ "$OPENCLAW_CI_CHECKOUT_REVISION" != "$OPENCLAW_CI_WORKFLOW_REVISION" ]; then
-            node scripts/check-protocol-event-coverage.mjs
-          else
-            node scripts/check-protocol-event-coverage.mts
-          fi
 
       - name: Restore exact dependency cache
         if: vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && !contains(fromJSON('["hybrid","runson"]'), vars.OPENCLAW_CI_RUNNER_BACKEND) && github.repository == 'openclaw/openclaw' && steps.manifest.outputs.run_node == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
@@ -1641,7 +1581,7 @@ jobs:
                   files: '(\.github/(workflows/.*|dependabot.ya?ml))|(action\.ya?ml)$'
                   require_serial: true
                   args: [--config, "$trusted_policy", --persona=regular, --min-severity=medium, --min-confidence=medium]
-                  exclude: '^(vendor/|apps/swabble/)'
+                  exclude: '^vendor/'
           EOF
           echo "PRE_COMMIT_CONFIG_PATH=$RUNNER_TEMP/security-fast-pre-commit.yaml" >> "$GITHUB_ENV"
 
@@ -1696,7 +1636,7 @@ jobs:
             pre-commit run --config "$PRE_COMMIT_CONFIG_PATH" zizmor --files "${workflow_files[@]}"
 
       - name: Audit production dependencies
-        if: github.event_name == 'workflow_dispatch' && (startsWith(inputs.dispatch_id, 'full-release-validation-') || startsWith(inputs.dispatch_id, 'release-native-android-'))
+        if: github.event_name == 'workflow_dispatch' && startsWith(inputs.dispatch_id, 'full-release-validation-')
         run: node .ci-harness/scripts/ci-production-audit.mjs
 
       - name: Setup differential guard dependencies
@@ -2179,38 +2119,6 @@ jobs:
           else
             echo "ui:check-performance:base is required for non-compatibility targets." >&2
             exit 1
-          fi
-
-  native-i18n:
-    permissions:
-      contents: read
-    needs: [preflight]
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_native_i18n == 'true' }}
-    runs-on: *shared_small_linux_runner
-    timeout-minutes: 10
-    steps:
-      - *linux_node_checkout_step
-
-      - *linux_node_setup_step
-
-      - name: Verify native app i18n source
-        run: |
-          if node -e 'const scripts = require("./package.json").scripts ?? {}; process.exit(scripts["native:i18n:verify"] ? 0 : 1)'; then
-            pnpm native:i18n:verify
-          else
-            # Historical release targets predate the source/generated split.
-            pnpm native:i18n:check
-            pnpm android:i18n:check
-            pnpm apple:i18n:check
-          fi
-
-      - name: Check native app generated locale parity
-        if: ${{ needs.preflight.outputs.strict_native_i18n == 'true' }}
-        run: |
-          if node -e 'const scripts = require("./package.json").scripts ?? {}; process.exit(scripts["native:i18n:verify"] ? 0 : 1)'; then
-            pnpm native:i18n:check
-          else
-            echo "Historical target was validated by the legacy native checks."
           fi
 
   checks-ui:
@@ -3705,15 +3613,6 @@ jobs:
                 fi
               fi
               pnpm tool-display:check
-              pnpm check:host-env-policy:swift
-              if has_package_script "check:browser-inspect-script:swift"; then
-                pnpm check:browser-inspect-script:swift
-              elif [[ "$FROZEN_TARGET" == "true" ]]; then
-                echo "[skip] frozen target predates the browser inspect Swift script guard"
-              else
-                echo "Current CI targets must provide the check:browser-inspect-script:swift package script." >&2
-                exit 1
-              fi
               if has_package_script "check:temp-path-guardrails"; then
                 pnpm check:temp-path-guardrails
               elif [[ "$FROZEN_TARGET" == "true" ]]; then
@@ -4584,7 +4483,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 2
       matrix: ${{ fromJson(needs.preflight.outputs.macos_node_matrix) }}
     steps:
       - *platform_checkout_step
@@ -4601,7 +4500,7 @@ jobs:
           set -euo pipefail
           node -e 'const os = require("node:os"); console.log("Native OS resources: " + JSON.stringify({ logicalCpuCount: os.cpus().length, availableParallelism: os.availableParallelism(), osTotalMemoryBytes: os.totalmem(), osFreeMemoryBytes: os.freemem() }));'
           case "$TASK" in
-            test-[123])
+            test-[12])
               pnpm "test:macos:ci:${TASK#test-}"
               ;;
             test)
@@ -4613,1569 +4512,6 @@ jobs:
               exit 1
               ;;
           esac
-
-  macos-swift:
-    permissions:
-      contents: read
-    name: ${{ format('macos-swift ({0})', matrix.phase) }}
-    needs: [preflight]
-    if: needs.preflight.outputs.run_macos_swift == 'true'
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        phase: ${{ fromJSON(github.event_name == 'workflow_dispatch' && needs.preflight.outputs.validation_tier != 'main' && !inputs.release_gate && needs.preflight.outputs.release_scope == 'full' && '["release","tests","packages"]' || '["tests","packages"]') }}
-    runs-on: &hosted_xcode_runner ${{ (github.event_name == 'workflow_dispatch' && startsWith(inputs.dispatch_id, 'full-release-validation-') && vars.OPENCLAW_RELEASE_RUNNER_GROUP || '') != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON((github.event_name == 'workflow_dispatch' && startsWith(inputs.dispatch_id, 'full-release-validation-') && vars.OPENCLAW_RELEASE_RUNNER_GROUP || '')), toJSON('xcode-27'))) || ('xcode-27') }}
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && needs.preflight.outputs.validation_tier != 'main' && !inputs.release_gate && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.compatibility_target != 'true' && matrix.phase == 'tests' && 75 || 30 }}
-    env:
-      HISTORICAL_TARGET: *historical_target
-      MACOS_PRIMARY_PHASE: ${{ github.event_name == 'workflow_dispatch' && needs.preflight.outputs.validation_tier != 'main' && !inputs.release_gate && needs.preflight.outputs.release_scope == 'full' && 'release' || 'tests' }}
-      OPENCLAWKIT_TEST_EXECUTION: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && needs.preflight.outputs.ci_shape != 'main') || github.run_attempt > 1) && 'serial' || 'parallel' }}
-    steps:
-      - name: Start Swift cache clock
-        id: swift-cache-clock
-        continue-on-error: true
-        timeout-minutes: 1
-        run: |
-          python3 -I -S - <<'PYTHON'
-          import os
-          import time
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"started={time.monotonic()}", file=output)
-          PYTHON
-
-      - *platform_checkout_step
-
-      - &select_xcode_step
-        name: Select Xcode
-        run: |
-          set -euo pipefail
-          source .ci-harness/scripts/lib/swift-toolchain.sh
-          select_xcode_toolchain
-
-      - name: Setup Node environment for Apple assets
-        if: hashFiles('scripts/prepare-apple-mermaid.mjs') != ''
-        uses: ./.ci-harness/.github/actions/setup-node-env
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache-mode: *cache_mode
-          install-bun: "false"
-          install-deps: "false"
-
-      - name: Install native asset dependencies
-        if: hashFiles('scripts/prepare-apple-mermaid.mjs') != ''
-        env:
-          CI: "true"
-        run: &mermaid_renderer_install_run >-
-          pnpm install --frozen-lockfile --prefer-offline --optional
-          --filter '@openclaw/mermaid-renderer...'
-          --filter '@openclaw/gateway-protocol...'
-          --config.ignore-scripts=false
-          --config.engine-strict=false
-          --config.enable-pre-post-scripts=true
-          --config.side-effects-cache=true
-
-      - name: Setup Node.js for native test tooling
-        if: hashFiles('scripts/prepare-apple-mermaid.mjs') == ''
-        env:
-          REQUESTED_NODE_VERSION: ${{ env.NODE_VERSION }}
-        run: *ensure_node_run
-
-      - &apple_mermaid_cache_key
-        name: Identify Apple Mermaid inputs
-        if: hashFiles('scripts/prepare-apple-mermaid.mjs') != '' && env.HISTORICAL_TARGET != 'true' && needs.preflight.outputs.frozen_target != 'true'
-        id: apple-mermaid-inputs
-        run: echo "key=$(node scripts/prepare-apple-mermaid.mjs --cache-key)" >> "$GITHUB_OUTPUT"
-
-      - &apple_mermaid_cache_restore
-        name: Restore Apple Mermaid assets
-        if: steps.apple-mermaid-inputs.outputs.key != '' && needs.preflight.outputs.cache_mode != 'off'
-        id: apple-mermaid-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/shared/mermaid/assets
-          key: apple-mermaid-v1-${{ steps.apple-mermaid-inputs.outputs.key }}
-
-      - name: Prepare Apple Mermaid assets
-        run: |
-          set -euo pipefail
-          if [[ -f scripts/prepare-apple-mermaid.mjs ]]; then
-            node scripts/prepare-apple-mermaid.mjs
-          elif [[ "$HISTORICAL_TARGET" == "true" ]]; then
-            echo "Frozen target predates bundled Mermaid assets."
-          else
-            echo "Current CI targets must provide scripts/prepare-apple-mermaid.mjs." >&2
-            exit 1
-          fi
-
-      - &apple_mermaid_cache_save
-        name: Save Apple Mermaid assets
-        if: steps.apple-mermaid-inputs.outputs.key != '' && steps.apple-mermaid-cache.outputs.cache-hit != 'true' && needs.preflight.outputs.cache_write_allowed == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON('["push","schedule"]'), github.event_name)
-        continue-on-error: true
-        timeout-minutes: 2
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/shared/mermaid/assets
-          key: ${{ steps.apple-mermaid-cache.outputs.cache-primary-key }}
-
-      - name: Install XcodeGen / SwiftLint / SwiftFormat
-        if: matrix.phase == env.MACOS_PRIMARY_PHASE
-        run: |
-          if [[ -x ./scripts/install-xcodegen.sh && -x ./scripts/install-swift-tools.sh ]]; then
-            swift_tools_dir="$RUNNER_TEMP/openclaw-swift-tools"
-            ./scripts/install-xcodegen.sh "$swift_tools_dir"
-            ./scripts/install-swift-tools.sh "$swift_tools_dir"
-            echo "$swift_tools_dir" >> "$GITHUB_PATH"
-            "$swift_tools_dir/xcodegen" --version
-            "$swift_tools_dir/swiftformat" --version
-            "$swift_tools_dir/swiftlint" version
-          elif [[ "$HISTORICAL_TARGET" == "true" ]]; then
-            # Frozen release targets before the pinned installer used one of these
-            # reviewed formatter contracts. Fail closed for any unknown minimum.
-            brew update
-            brew install xcodegen swiftlint
-            swiftformat_min_version="$(awk '$1 == "--min-version" { print $2; exit }' config/swiftformat)"
-            case "$swiftformat_min_version" in
-              ""|0.61.1)
-                swiftformat_version="0.61.1"
-                swiftformat_checksum="b990400779aceb7d7020796eb9ba814d4480543f671d38fc0ff48cb72f04c584"
-                ;;
-              0.62.1)
-                swiftformat_version="0.62.1"
-                swiftformat_checksum="7cb1cb1fae04932047c7015441c543848e8e60e1572d808d080e0a1f1661114a"
-                ;;
-              *)
-                echo "Unsupported frozen-target SwiftFormat minimum: $swiftformat_min_version" >&2
-                exit 1
-                ;;
-            esac
-            swiftformat_archive="$RUNNER_TEMP/swiftformat-$swiftformat_version.zip"
-            swift_tools_dir="$RUNNER_TEMP/openclaw-legacy-swift-tools"
-            curl --fail --location --no-progress-meter --show-error \
-              --connect-timeout 10 --max-time 120 \
-              --retry 3 --retry-max-time 120 \
-              --output "$swiftformat_archive" \
-              "https://github.com/nicklockwood/SwiftFormat/releases/download/$swiftformat_version/swiftformat.zip" \
-              2> >(sed 's/^Warning: /::warning::/' >&2)
-            if [[ "$(shasum -a 256 "$swiftformat_archive" | awk '{print $1}')" != "$swiftformat_checksum" ]]; then
-              echo "SwiftFormat $swiftformat_version archive checksum mismatch" >&2
-              exit 1
-            fi
-            mkdir -p "$swift_tools_dir"
-            unzip -q "$swiftformat_archive" -d "$swift_tools_dir"
-            chmod +x "$swift_tools_dir/swiftformat"
-            echo "$swift_tools_dir" >> "$GITHUB_PATH"
-            [[ "$("$swift_tools_dir/swiftformat" --version)" == "$swiftformat_version" ]]
-          else
-            echo "Current CI targets must provide scripts/install-xcodegen.sh and scripts/install-swift-tools.sh." >&2
-            exit 1
-          fi
-
-      - name: Detect Swift toolchain cache key
-        id: swift-toolchain
-        if: matrix.phase != 'packages'
-        run: |
-          set -euo pipefail
-          xcode_version="$(xcodebuild -version | tr '\n' ' ' | sed 's/  */ /g; s/ $//')"
-          swift_version="$(swift --version | head -n 1)"
-          toolchain_key="$(printf '%s\n%s\n' "$xcode_version" "$swift_version" | shasum -a 256 | awk '{print $1}')"
-          echo "key=$toolchain_key" >> "$GITHUB_OUTPUT"
-
-      - name: Restore SwiftPM cache
-        id: swiftpm-cache
-        if: needs.preflight.outputs.cache_mode != 'off'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/Library/Caches/org.swift.swiftpm
-          key: ${{ runner.os }}-swiftpm-${{ hashFiles('apps/macos/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-swiftpm-
-
-      - name: Restore Swift build directory cache
-        id: swift-build-cache
-        if: matrix.phase != 'packages' && needs.preflight.outputs.cache_mode != 'off'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/macos/.build
-          # Cached SwiftPM traits and phase products need separate archives.
-          key: ${{ runner.os }}-swift-build-${{ matrix.phase == 'tests' && 'v7' || 'v6' }}-${{ matrix.phase }}-${{ hashFiles('scripts/swift-build-cache-metadata.py') }}-graph-${{ steps.swift-toolchain.outputs.key }}-${{ hashFiles('apps/macos/Package*.swift', 'apps/macos/Package.resolved', 'apps/shared/**/Package*.swift', 'apps/shared/**/Package.resolved', 'apps/swabble/Package*.swift', 'apps/swabble/Package.resolved') }}-${{ hashFiles('apps/macos/Sources/**', 'apps/macos/Tests/**', 'apps/shared/**/Sources/**', 'apps/swabble/Sources/**') }}
-          restore-keys: |
-            ${{ runner.os }}-swift-build-${{ matrix.phase == 'tests' && 'v7' || 'v6' }}-${{ matrix.phase }}-${{ hashFiles('scripts/swift-build-cache-metadata.py') }}-graph-${{ steps.swift-toolchain.outputs.key }}-${{ hashFiles('apps/macos/Package*.swift', 'apps/macos/Package.resolved', 'apps/shared/**/Package*.swift', 'apps/shared/**/Package.resolved', 'apps/swabble/Package*.swift', 'apps/swabble/Package.resolved') }}-
-
-      - name: Validate Swift build cache
-        id: validate-swift-build-cache
-        if: matrix.phase != 'packages'
-        run: |
-          set -euo pipefail
-          cache_valid=true
-          sparkle_info="apps/macos/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/Info.plist"
-          if [[ -d apps/macos/.build && ! -f "$sparkle_info" ]]; then
-            echo "::warning::Swift build cache is missing Sparkle; resetting the local SwiftPM build directory."
-            swift package --package-path apps/macos reset
-            cache_valid=false
-          fi
-          echo "cache-valid=$cache_valid" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Swift build input timestamps
-        if: steps.validate-swift-build-cache.outputs.cache-valid == 'true' && env.HISTORICAL_TARGET != 'true'
-        run: python3 -I -S scripts/swift-build-cache-metadata.py restore
-
-      - name: Show toolchain
-        run: |
-          sw_vers
-          xcodebuild -version
-          swift --version
-
-      - name: Native state schema version contract
-        if: matrix.phase == env.MACOS_PRIMARY_PHASE
-        run: |
-          if [[ -f scripts/check-native-state-schema-version.mjs ]]; then
-            node scripts/check-native-state-schema-version.mjs
-          elif [[ "$HISTORICAL_TARGET" == "true" ]]; then
-            echo "[skip] native state schema version guard is not present in this historical target"
-          else
-            echo "Current CI targets must provide scripts/check-native-state-schema-version.mjs." >&2
-            exit 1
-          fi
-
-      - name: Swift lint
-        if: matrix.phase == env.MACOS_PRIMARY_PHASE
-        run: |
-          if [[ -x ./scripts/lint-swift.sh && -x ./scripts/format-swift.sh ]]; then
-            ./scripts/lint-swift.sh macos
-            ./scripts/format-swift.sh macos
-          elif [[ "$HISTORICAL_TARGET" == "true" ]]; then
-            # Frozen release targets before the shared wrappers used these commands directly.
-            swiftlint lint --config config/swiftlint.yml
-            swiftformat --lint apps/macos/Sources --config config/swiftformat --exclude '**/OpenClawProtocol,**/HostEnvSecurityPolicy.generated.swift,**/BrowserInspectScript.generated.swift'
-          else
-            echo "Current CI targets must provide the Swift lint and format wrappers." >&2
-            exit 1
-          fi
-
-      - name: Swift build (release)
-        if: matrix.phase == 'release'
-        run: |
-          set -euo pipefail
-          # The macOS lane validates the desktop app build; the CLI product is
-          # intentionally left to its own narrower surfaces instead of making
-          # this lane rebuild the whole package graph.
-          if swift build --package-path apps/macos --product OpenClaw --configuration release; then
-            exit 0
-          fi
-
-          sparkle_framework="apps/macos/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework"
-          [[ -d "$sparkle_framework" && ! -f "$sparkle_framework/Info.plist" ]] || exit 1
-          echo "::warning::SwiftPM did not produce complete Sparkle metadata; resetting once before retry."
-          swift package --package-path apps/macos reset
-          swift build --package-path apps/macos --product OpenClaw --configuration release
-
-      - name: OpenClawKit Talk-trait opt-out (no ElevenLabsKit when default traits disabled)
-        if: matrix.phase == 'packages'
-        run: |
-          set -euo pipefail
-          # Guard: chat-only consumers build OpenClawKit with the Talk trait
-          # disabled and must NOT link ElevenLabsKit. Assert that future sources
-          # under OpenClawKit cannot silently reintroduce an unconditional
-          # ElevenLabsKit dependency while the manifest still looks correct.
-          deps="$(swift package --package-path apps/shared/OpenClawKit show-dependencies --disable-default-traits)"
-          echo "$deps"
-          if grep -qi 'elevenlabs' <<<"$deps"; then
-            echo "::error::ElevenLabsKit resolved with the Talk trait disabled; keep it gated behind the Talk trait."
-            exit 1
-          fi
-          swift build --package-path apps/shared/OpenClawKit --target OpenClawKit --disable-default-traits --disable-index-store -Xswiftc -gline-tables-only
-
-      # openclawkit-tests-contract-v1: the target owns an independently runnable package suite.
-      - name: OpenClawKit tests
-        if: matrix.phase == 'packages' && needs.preflight.outputs.run_openclawkit_tests == 'true'
-        run: |
-          set -euo pipefail
-          openclawkit_scratch="$(mktemp -d "$RUNNER_TEMP/openclawkit.XXXXXX")"
-          trap 'rm -rf "$openclawkit_scratch"' EXIT
-          openclawkit_test_args=(
-            --package-path apps/shared/OpenClawKit
-            --scratch-path "$openclawkit_scratch"
-            --disable-index-store -Xswiftc -gline-tables-only
-          )
-          if [[ "$OPENCLAWKIT_TEST_EXECUTION" == "parallel" ]]; then
-            openclawkit_test_args+=(--parallel)
-          else
-            openclawkit_test_args+=(--no-parallel)
-          fi
-          swift test "${openclawkit_test_args[@]}"
-
-      - name: Swabble tests
-        if: matrix.phase == 'packages' && env.HISTORICAL_TARGET != 'true'
-        run: |
-          set -euo pipefail
-          swabble_scratch="$(mktemp -d "$RUNNER_TEMP/swabble.XXXXXX")"
-          trap 'rm -rf "$swabble_scratch"' EXIT
-          swift test --package-path apps/swabble --scratch-path "$swabble_scratch" --build-system native --disable-index-store -Xswiftc -gline-tables-only --no-parallel
-
-      - name: Swift test
-        id: swift-test
-        if: matrix.phase == 'tests'
-        run: |
-          set -euo pipefail
-          source .ci-harness/scripts/lib/swift-toolchain.sh
-          native_test_log_dir="$RUNNER_TEMP/openclaw-native-test-logs"
-          native_test_log_id="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
-          # SwiftPM's swiftbuild backend can omit the test-bundle rpath for Sparkle.
-          # Remove once runner toolchains pass with swiftlang/swift-package-manager#10394.
-          # Keep the release build above on the default backend.
-          # CI needs coverage and line backtraces, not IDE indexes or debugger type metadata.
-          swift_test_args=(--package-path apps/macos --build-system native --enable-code-coverage --disable-index-store -Xswiftc -gline-tables-only)
-          swift build "${swift_test_args[@]}" --build-tests
-          echo "debug-tests-built=true" >> "$GITHUB_OUTPUT"
-          swift_test_args+=(--skip-build)
-          if [[ -f scripts/test-macos-native.mts ]]; then
-            logical_cpu="$(sysctl -n hw.logicalcpu)"
-            if [[ ! "$logical_cpu" =~ ^[1-9][0-9]*$ ]]; then
-              echo "Invalid macOS logical CPU count: $logical_cpu" >&2
-              exit 1
-            fi
-            swift_test_width=$(( logical_cpu < 12 ? logical_cpu : 12 ))
-            echo "[macos-swift] Swift Testing parallelization width: $swift_test_width"
-            swift_test_args+=(--experimental-maximum-parallelization-width "$swift_test_width")
-            # Quick Chat keeps XCTest process isolation: parallel suites take key status and dismiss its
-            # panel. Frozen targets without the suite skip the lane.
-            if [[ "$HISTORICAL_TARGET" != "true" || -f apps/macos/Tests/OpenClawIPCTests/QuickChatCatalogPresentationTests.swift ]]; then
-              run_apple_command_logged "$native_test_log_dir/default-$native_test_log_id.log" node scripts/test-macos-native.mts default "${swift_test_args[@]}" --skip "AppStateIsolationTests|ProfileChatPreferencesTests|QuickChatCatalogPresentationTests"
-              run_apple_command_logged "$native_test_log_dir/default-rendered-$native_test_log_id.log" node scripts/test-macos-native.mts default "${swift_test_args[@]}" --filter "QuickChatCatalogPresentationTests"
-            else
-              run_apple_command_logged "$native_test_log_dir/default-$native_test_log_id.log" node scripts/test-macos-native.mts default "${swift_test_args[@]}" --skip "AppStateIsolationTests|ProfileChatPreferencesTests"
-            fi
-            run_apple_command_logged "$native_test_log_dir/named-$native_test_log_id.log" node scripts/test-macos-native.mts named "${swift_test_args[@]}" --filter "AppStateIsolationTests|ProfileChatPreferencesTests"
-          elif [[ "$HISTORICAL_TARGET" == "true" ]]; then
-            # Frozen release targets predate the resource-owner script and its tests.
-            # Their original suite still runs only on this disposable macOS worker.
-            swift_test_args+=(--no-parallel)
-            run_apple_command_logged "$native_test_log_dir/default-$native_test_log_id.log" swift test "${swift_test_args[@]}"
-          else
-            echo "Current CI targets must provide scripts/test-macos-native.mts." >&2
-            exit 1
-          fi
-
-      - name: Upload macOS native test logs
-        if: ${{ always() && matrix.phase == 'tests' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: macos-native-test-logs
-          path: ${{ runner.temp }}/openclaw-native-test-logs/*.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload default-profile chat menu captures
-        if: ${{ always() && steps.swift-test.outputs.menu-default-artifact-path != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: macos-chat-menu-captures-default
-          path: |
-            ${{ runner.temp }}/openclaw-menu-default-*/*-window.png
-            ${{ runner.temp }}/openclaw-menu-default-*/*-menu-*.png
-            ${{ runner.temp }}/openclaw-menu-default-*/*-capture-status.json
-            ${{ runner.temp }}/openclaw-menu-default-*/capture-export.json
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload named-profile chat menu captures
-        if: ${{ always() && steps.swift-test.outputs.menu-named-artifact-path != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: macos-chat-menu-captures-named
-          path: |
-            ${{ steps.swift-test.outputs.menu-named-artifact-path }}/*-window.png
-            ${{ steps.swift-test.outputs.menu-named-artifact-path }}/*-menu-*.png
-            ${{ steps.swift-test.outputs.menu-named-artifact-path }}/*-capture-status.json
-            ${{ steps.swift-test.outputs.menu-named-artifact-path }}/capture-export.json
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Setup bundled recovery runtime build
-        id: recovery-runtime-setup
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && needs.preflight.outputs.validation_tier != 'main' && !inputs.release_gate && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.compatibility_target != 'true' && matrix.phase == 'tests' && hashFiles('scripts/test-macos-app-host.sh') != '' && steps.swift-test.outputs.debug-tests-built == 'true' && steps.swift-test.outcome == 'success' }}
-        uses: ./.ci-harness/.github/actions/setup-node-env
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache-mode: *cache_mode
-          install-bun: "false"
-          build-all-cache-scope: full
-
-      - name: Build bundled recovery runtime
-        id: recovery-runtime-build
-        if: ${{ !cancelled() && steps.recovery-runtime-setup.outcome == 'success' }}
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
-        run: pnpm build:ci-artifacts
-
-      - name: Prove bundled app recovery and relaunch
-        id: bundled-recovery
-        if: ${{ !cancelled() && steps.recovery-runtime-build.outcome == 'success' }}
-        run: bash scripts/test-macos-app-host.sh
-
-      - name: Upload bundled app recovery proof
-        if: ${{ always() && steps.bundled-recovery.outputs.recovery-artifact-path != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: macos-bundled-recovery-proof
-          path: ${{ steps.bundled-recovery.outputs.recovery-artifact-path }}
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Render isolated macOS health fixtures
-        id: health-render
-        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && needs.preflight.outputs.validation_tier != 'main' && !inputs.release_gate && needs.preflight.outputs.release_scope == 'full' && steps.swift-test.outputs.debug-tests-built == 'true' && hashFiles('scripts/test-macos-health-render.sh') != '' }}
-        run: bash scripts/test-macos-health-render.sh
-
-      - name: Upload macOS health component renders
-        if: ${{ always() && steps.health-render.outputs.artifact-path != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: macos-health-component-renders
-          path: |
-            ${{ steps.health-render.outputs.artifact-path }}/ready.png
-            ${{ steps.health-render.outputs.artifact-path }}/startup-grace.png
-            ${{ steps.health-render.outputs.artifact-path }}/stale-socket.png
-            ${{ steps.health-render.outputs.artifact-path }}/disabled.png
-            ${{ steps.health-render.outputs.artifact-path }}/probe-permission.png
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Check Swift cache save budget
-        id: swift-cache-budget
-        if: matrix.phase != 'packages' && needs.preflight.outputs.cache_write_allowed == 'true'
-        continue-on-error: true
-        timeout-minutes: 1
-        env:
-          CACHE_STARTED: ${{ steps.swift-cache-clock.outputs.started }}
-        run: |
-          python3 -I -S - <<'PYTHON'
-          import os
-          import time
-          try:
-              elapsed = time.monotonic() - float(os.environ.get("CACHE_STARTED", ""))
-              allowed = 0 <= elapsed < 20 * 60
-          except ValueError:
-              allowed = False
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"allowed={str(allowed).lower()}", file=output)
-          if not allowed:
-              print("::notice::Skipping optional Swift cache saves: insufficient or unknown job budget.")
-          PYTHON
-
-      - name: Save SwiftPM cache
-        continue-on-error: true
-        timeout-minutes: 1
-        if: matrix.phase == env.MACOS_PRIMARY_PHASE && needs.preflight.outputs.cache_write_allowed == 'true' && steps.swiftpm-cache.outputs.cache-hit != 'true' && steps.swift-cache-budget.outputs.allowed == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/Library/Caches/org.swift.swiftpm
-          key: ${{ steps.swiftpm-cache.outputs.cache-primary-key }}
-
-      - name: Record Swift build input timestamps
-        id: record-swift-build-cache-metadata
-        continue-on-error: true
-        timeout-minutes: 1
-        if: needs.preflight.outputs.cache_write_allowed == 'true' && steps.swift-build-cache.outputs.cache-hit != 'true' && steps.swift-cache-budget.outputs.allowed == 'true' && env.HISTORICAL_TARGET != 'true'
-        run: python3 -I -S scripts/swift-build-cache-metadata.py record
-
-      - name: Save Swift build directory cache
-        continue-on-error: true
-        timeout-minutes: 2
-        if: needs.preflight.outputs.cache_write_allowed == 'true' && steps.swift-build-cache.outputs.cache-hit != 'true' && steps.swift-cache-budget.outputs.allowed == 'true' && (env.HISTORICAL_TARGET == 'true' || steps.record-swift-build-cache-metadata.outcome == 'success')
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/macos/.build
-          key: ${{ steps.swift-build-cache.outputs.cache-primary-key }}
-
-  ios-build:
-    permissions:
-      contents: read
-    name: ${{ format('ios-build ({0})', matrix.phase) }}
-    needs: [preflight]
-    if: needs.preflight.outputs.run_ios_build == 'true'
-    concurrency:
-      group: ${{ github.event_name == 'schedule' && format('{0}-hourly-ios-v1-{1}', github.workflow, matrix.phase) || format('{0}-ios-v1-{1}-{2}', github.workflow, github.run_id, matrix.phase) }}
-      cancel-in-progress: false
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        phase: ${{ fromJSON(github.event_name == 'schedule' && '["tests"]' || github.event_name == 'workflow_dispatch' && !inputs.release_gate && needs.preflight.outputs.release_scope == 'full' && ((needs.preflight.outputs.validation_tier == 'main' || needs.preflight.outputs.compatibility_target == 'true') && '["tests"]' || '["release","tests"]') || '["smoke"]') }}
-    runs-on: *hosted_xcode_runner
-    timeout-minutes: 150
-    env:
-      HISTORICAL_TARGET: *historical_target
-      IOS_CI_PHASE: ${{ matrix.phase }}
-      IOS_MAIN_TIER: ${{ needs.preflight.outputs.validation_tier == 'main' }}
-      IOS_FROZEN_TARGET: ${{ needs.preflight.outputs.frozen_target }}
-      IOS_SIMULATOR_SELECTION: ${{ needs.preflight.outputs.ios_simulator_selection }}
-    steps:
-      - *platform_checkout_step
-
-      - *select_xcode_step
-
-      - *plain_node_setup_step
-
-      - *apple_mermaid_cache_key
-      - *apple_mermaid_cache_restore
-
-      - name: Identify iOS native cache inputs
-        id: ios-cache-inputs
-        if: env.HISTORICAL_TARGET != 'true' && needs.preflight.outputs.frozen_target != 'true' && hashFiles('apps/shared/OpenClawWatchRTC/build.sh') != ''
-        run: |
-          echo "xcode=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-          echo "OPENCLAW_WATCH_RTC_CACHE_DIR=$RUNNER_TEMP/openclaw-watch-rtc-libraries" >> "$GITHUB_ENV"
-
-      - name: Restore iOS source packages
-        id: ios-packages-cache
-        if: steps.ios-cache-inputs.outputs.xcode != '' && needs.preflight.outputs.cache_mode != 'off'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: &ios_packages_cache_paths |
-            ~/Library/Developer/Xcode/DerivedData/OpenClaw-*/SourcePackages
-          key: ios-packages-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.ios-cache-inputs.outputs.xcode }}-${{ hashFiles('apps/ios/**/Package.resolved', 'apps/ios/project.yml', 'apps/shared/**/Package.swift', 'apps/swabble/Package.swift') }}
-
-      - name: Restore Watch RTC build inputs
-        id: watch-rtc-cache
-        if: steps.ios-cache-inputs.outputs.xcode != '' && needs.preflight.outputs.cache_mode != 'off'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: &watch_rtc_cache_paths |
-            ~/.cargo/registry
-            ${{ runner.temp }}/openclaw-watch-rtc-libraries
-          key: watch-rtc-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.ios-cache-inputs.outputs.xcode }}-${{ hashFiles('apps/shared/OpenClawWatchRTC/Cargo.lock', 'apps/shared/OpenClawWatchRTC/Cargo.toml', 'apps/shared/OpenClawWatchRTC/rust-toolchain.toml', 'apps/shared/OpenClawWatchRTC/build.sh', 'apps/shared/OpenClawWatchRTC/src/**', 'apps/ios/project.yml') }}
-
-      - &install_watch_rust_toolchain
-        name: Install Watch Rust toolchain
-        if: env.HISTORICAL_TARGET != 'true' || hashFiles('apps/shared/OpenClawWatchRTC/Cargo.toml') != ''
-        run: |
-          set -euo pipefail
-          export PATH="$HOME/.cargo/bin:$PATH"
-          watch_toolchain="$(awk -F '"' '/^channel =/ { print $2; exit }' apps/shared/OpenClawWatchRTC/rust-toolchain.toml)"
-          test -n "$watch_toolchain"
-          rustup toolchain install "$watch_toolchain" --profile minimal --component rust-src
-
-      - name: Test Watch RTC engine
-        if: matrix.phase == 'tests' && (env.HISTORICAL_TARGET != 'true' || hashFiles('apps/shared/OpenClawWatchRTC/Cargo.toml') != '')
-        working-directory: apps/shared/OpenClawWatchRTC
-        run: |
-          set -euo pipefail
-          export PATH="$HOME/.cargo/bin:$PATH"
-          SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-            AWS_LC_SYS_NO_ASM=0 AWS_LC_SYS_CMAKE_BUILDER=0 \
-            cargo test --locked --lib -j 2 -- --test-threads=1
-
-      - name: Install iOS Swift tooling
-        run: |
-          if [[ -x ./scripts/install-xcodegen.sh && -x ./scripts/install-swift-tools.sh ]]; then
-            swift_tools_dir="$RUNNER_TEMP/openclaw-swift-tools"
-            ./scripts/install-xcodegen.sh "$swift_tools_dir"
-            ./scripts/install-swift-tools.sh "$swift_tools_dir"
-            echo "$swift_tools_dir" >> "$GITHUB_PATH"
-            "$swift_tools_dir/xcodegen" --version
-            "$swift_tools_dir/swiftformat" --version
-            "$swift_tools_dir/swiftlint" version
-          elif [[ "$HISTORICAL_TARGET" == "true" ]]; then
-            # The generated Xcode project runs SwiftFormat during the build, so
-            # frozen targets must keep the formatter contract they were authored for.
-            brew update
-            brew install xcodegen swiftlint
-            swiftformat_min_version="$(awk '$1 == "--min-version" { print $2; exit }' config/swiftformat)"
-            case "$swiftformat_min_version" in
-              ""|0.61.1)
-                swiftformat_version="0.61.1"
-                swiftformat_checksum="b990400779aceb7d7020796eb9ba814d4480543f671d38fc0ff48cb72f04c584"
-                ;;
-              0.62.1)
-                swiftformat_version="0.62.1"
-                swiftformat_checksum="7cb1cb1fae04932047c7015441c543848e8e60e1572d808d080e0a1f1661114a"
-                ;;
-              *)
-                echo "Unsupported frozen-target SwiftFormat minimum: $swiftformat_min_version" >&2
-                exit 1
-                ;;
-            esac
-            swiftformat_archive="$RUNNER_TEMP/swiftformat-$swiftformat_version.zip"
-            swift_tools_dir="$RUNNER_TEMP/openclaw-legacy-swift-tools"
-            curl --fail --location --no-progress-meter --show-error \
-              --connect-timeout 10 --max-time 120 \
-              --retry 3 --retry-max-time 120 \
-              --output "$swiftformat_archive" \
-              "https://github.com/nicklockwood/SwiftFormat/releases/download/$swiftformat_version/swiftformat.zip" \
-              2> >(sed 's/^Warning: /::warning::/' >&2)
-            if [[ "$(shasum -a 256 "$swiftformat_archive" | awk '{print $1}')" != "$swiftformat_checksum" ]]; then
-              echo "SwiftFormat $swiftformat_version archive checksum mismatch" >&2
-              exit 1
-            fi
-            mkdir -p "$swift_tools_dir"
-            unzip -q "$swiftformat_archive" -d "$swift_tools_dir"
-            chmod +x "$swift_tools_dir/swiftformat"
-            echo "$swift_tools_dir" >> "$GITHUB_PATH"
-            [[ "$("$swift_tools_dir/swiftformat" --version)" == "$swiftformat_version" ]]
-            # Legacy generated Xcode phases prepend Homebrew ahead of GITHUB_PATH.
-            # Point that lookup at the verified binary or the build can bypass the pin.
-            swiftformat_link="$(brew --prefix)/bin/swiftformat"
-            ln -sfn "$swift_tools_dir/swiftformat" "$swiftformat_link"
-            [[ "$("$swiftformat_link" --version)" == "$swiftformat_version" ]]
-          else
-            echo "Current CI targets must provide scripts/install-xcodegen.sh and scripts/install-swift-tools.sh." >&2
-            exit 1
-          fi
-
-      - name: Swift lint
-        if: matrix.phase == 'smoke' || matrix.phase == 'tests'
-        run: |
-          if [[ -x ./scripts/lint-swift.sh && -x ./scripts/format-swift.sh ]]; then
-            ./scripts/lint-swift.sh ios
-            ./scripts/format-swift.sh ios
-          else
-            # Frozen release targets before the iOS lint lane have no equivalent target-owned step.
-            echo "Swift lint wrappers are absent; skipping iOS lint for this frozen target."
-          fi
-
-      - name: Configure iOS build and report simulator selection
-        if: (matrix.phase == 'smoke' || matrix.phase == 'tests') && needs.preflight.outputs.compatibility_target != 'true'
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'JS'
-          import { appendFileSync } from "node:fs";
-          import { formatIosSimulatorSelectionSummary } from "./.ci-harness/scripts/lib/ci-ios-smoke-plan.mjs";
-          appendFileSync(process.env.GITHUB_STEP_SUMMARY, formatIosSimulatorSelectionSummary(JSON.parse(process.env.IOS_SIMULATOR_SELECTION)));
-          JS
-          if [[ "$IOS_CI_PHASE" == "smoke" || "$IOS_MAIN_TIER" == "true" ]]; then
-            # Keep native architecture and test-bundle compilation even without simulator execution.
-            smoke_settings="$RUNNER_TEMP/openclaw-ios-smoke.xcconfig"
-            printf 'ARCHS = %s\nCOMPILER_INDEX_STORE_ENABLE = NO\n' "$(uname -m)" > "$smoke_settings"
-            echo "XCODE_XCCONFIG_FILE=$smoke_settings" >> "$GITHUB_ENV"
-          fi
-
-      - name: Prepare iOS simulator
-        if: (matrix.phase == 'tests' || (matrix.phase == 'smoke' && (needs.preflight.outputs.run_ios_voice_cleanup_tests == 'true' || needs.preflight.outputs.run_ios_lifecycle_tests == 'true'))) && needs.preflight.outputs.compatibility_target != 'true'
-        run: |
-          set -euo pipefail
-          source .ci-harness/scripts/lib/swift-toolchain.sh
-          simulator_id="$(select_ios_test_simulator)"
-          echo "IOS_SIMULATOR_ID=$simulator_id" >> "$GITHUB_ENV"
-
-      - name: Build iOS app
-        if: matrix.phase == 'smoke' || matrix.phase == 'tests'
-        run: |
-          set -euo pipefail
-          if [[ ( "$IOS_CI_PHASE" == "smoke" || "$IOS_MAIN_TIER" == "true" ) && "$HISTORICAL_TARGET" != "true" ]]; then
-            # Full manual validation retains the universal simulator build.
-            if [[ -n "${IOS_SIMULATOR_ID:-}" ]]; then
-              export IOS_DEST="platform=iOS Simulator,id=$IOS_SIMULATOR_ID"
-            else
-              export IOS_DEST="generic/platform=iOS Simulator"
-            fi
-          fi
-          python3 - <<'PY'
-          import os
-          import signal
-          import subprocess
-          import time
-
-          def interrupted(signum, _frame):
-              raise SystemExit(128 + signum)
-
-          signal.signal(signal.SIGTERM, interrupted)
-          preparation = None
-          log_path = os.path.join(os.environ["RUNNER_TEMP"], "ios-simulator-prepare.log")
-          started = time.monotonic()
-          with open(log_path, "w+") as log:
-              try:
-                  if os.environ.get("IOS_SIMULATOR_ID"):
-                      preparation = subprocess.Popen(["/bin/bash", "-euo", "pipefail", "-c", '''
-          xcrun simctl bootstatus "$IOS_SIMULATOR_ID" -b
-          if [[ -x ./scripts/install-simslim.sh && -x ./scripts/ios-simulator-prepare.sh ]]; then
-            simslim_dir="$RUNNER_TEMP/openclaw-simslim"
-            ./scripts/install-simslim.sh "$simslim_dir"
-            OPENCLAW_CI_SIMSLIM_BINARY="$simslim_dir/simslim" \
-              ./scripts/ios-simulator-prepare.sh "$IOS_SIMULATOR_ID"
-          fi
-          '''], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-                  if os.environ["HISTORICAL_TARGET"] != "true" and (
-                      os.environ["IOS_CI_PHASE"] == "smoke" or os.environ.get("IOS_FROZEN_TARGET") != "true"
-                  ):
-                      subprocess.run(["pnpm", "ios:gen"], check=True)
-                      subprocess.run([
-                          "python3", ".ci-harness/scripts/ci-xcodebuild.py",
-                          "-project", "apps/ios/OpenClaw.xcodeproj",
-                          "-scheme", "OpenClaw",
-                          "-configuration", "Debug",
-                          "-destination", os.environ.get("IOS_DEST") or "generic/platform=iOS Simulator",
-                          "-showBuildTimingSummary",
-                          "build-for-testing" if os.environ["IOS_CI_PHASE"] == "smoke" else "build",
-                      ], check=True)
-                  else:
-                      subprocess.run(["pnpm", "ios:build"], check=True)
-                  print(f"iOS app build: {time.monotonic() - started:.1f}s", flush=True)
-                  if preparation:
-                      # Bound the join even if boot or SimSlim never completes.
-                      result = preparation.wait(timeout=max(1, 600 - (time.monotonic() - started)))
-                      if result:
-                          raise SystemExit(result if result > 0 else 1)
-              except subprocess.TimeoutExpired:
-                  print("::error::iOS simulator preparation exceeded 600s", flush=True)
-                  raise SystemExit(1)
-              finally:
-                  if preparation and preparation.poll() is None:
-                      try:
-                          os.killpg(preparation.pid, signal.SIGKILL)
-                      except ProcessLookupError:
-                          pass
-                      preparation.wait()
-                  log.seek(0)
-                  print(log.read(), flush=True)
-                  print(f"iOS build and simulator preparation: {time.monotonic() - started:.1f}s", flush=True)
-          PY
-
-      - name: Build iOS app (Release)
-        if: matrix.phase == 'release'
-        run: |
-          set -euo pipefail
-          ./scripts/ios-configure-signing.sh
-          ./scripts/ios-write-version-xcconfig.sh
-          node scripts/ios-write-swift-filelist.mjs
-          xcodegen generate --spec apps/ios/project.yml --project apps/ios
-          xcodebuild \
-            -project apps/ios/OpenClaw.xcodeproj \
-            -scheme OpenClaw \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-
-      - *apple_mermaid_cache_save
-
-      - name: Save iOS source packages
-        if: steps.ios-cache-inputs.outputs.xcode != '' && steps.ios-packages-cache.outputs.cache-hit != 'true' && needs.preflight.outputs.cache_write_allowed == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON('["push","schedule"]'), github.event_name)
-        continue-on-error: true
-        timeout-minutes: 3
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: *ios_packages_cache_paths
-          key: ${{ steps.ios-packages-cache.outputs.cache-primary-key }}
-
-      - name: Save Watch RTC build inputs
-        if: steps.ios-cache-inputs.outputs.xcode != '' && steps.watch-rtc-cache.outputs.cache-hit != 'true' && needs.preflight.outputs.cache_write_allowed == 'true' && github.ref == 'refs/heads/main' && contains(fromJSON('["push","schedule"]'), github.event_name)
-        continue-on-error: true
-        timeout-minutes: 3
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: *watch_rtc_cache_paths
-          key: ${{ steps.watch-rtc-cache.outputs.cache-primary-key }}
-
-      - name: Prove native managed document download and export
-        id: ios_attachment_tests
-        if: matrix.phase == 'tests' && needs.preflight.outputs.validation_tier != 'main' && needs.preflight.outputs.compatibility_target != 'true'
-        env:
-          BASELINE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: /bin/bash scripts/test-ios-chat-attachments.sh "$BASELINE_SHA"
-
-      - name: Run focused iOS voice cleanup simulator tests
-        id: ios_voice_cleanup_tests
-        if: (matrix.phase == 'tests' || (matrix.phase == 'smoke' && needs.preflight.outputs.run_ios_voice_cleanup_tests == 'true')) && needs.preflight.outputs.compatibility_target != 'true'
-        run: |
-          set -euo pipefail
-          source .ci-harness/scripts/lib/swift-toolchain.sh
-          mkdir -p apps/ios/build/LifecycleTestResults
-          diagnostic_collection=on-failure
-          if [[ "$IOS_CI_PHASE" == "smoke" || "$IOS_MAIN_TIER" == "true" ]]; then
-            # Xcode 27's verbose simulator diagnostics can stall for 600s after passing tests.
-            # Keep xcresult/log evidence here and verbose diagnostics in full manual validation.
-            diagnostic_collection=never
-          fi
-          test_action=test
-          if [[ "$IOS_CI_PHASE" == "smoke" && "$HISTORICAL_TARGET" != "true" ]]; then
-            test_action=test-without-building
-          fi
-          run_apple_command_logged apps/ios/build/LifecycleTestResults/OpenClawVoiceCleanupTests.log xcodebuild \
-            -project apps/ios/OpenClaw.xcodeproj \
-            -scheme OpenClaw \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,id=${IOS_SIMULATOR_ID:?}" \
-            -resultBundlePath apps/ios/build/LifecycleTestResults/OpenClawVoiceCleanupTests.xcresult \
-            -parallel-testing-enabled NO \
-            -collect-test-diagnostics "$diagnostic_collection" \
-            -only-testing:OpenClawTests/TalkRealtimeVoiceSessionCleanupTests \
-            -only-testing:OpenClawTests/TalkRealtimeConsultCancellationTests \
-            -only-testing:OpenClawTests/TalkRealtimeTranscriptWriteQueueTests \
-            -only-testing:OpenClawTests/TalkModeManagerTests \
-            -only-testing:OpenClawTests/ManagedDocumentEnvelopeTests \
-            -only-testing:OpenClawTests/IOSMediaArtifactLoaderTests \
-            -only-testing:OpenClawTests/OpenClawTypographyTests \
-            "$test_action"
-
-      - name: Run focused iOS lifecycle simulator tests
-        id: ios_lifecycle_tests
-        if: (matrix.phase == 'tests' || (matrix.phase == 'smoke' && needs.preflight.outputs.run_ios_lifecycle_tests == 'true')) && needs.preflight.outputs.compatibility_target != 'true'
-        run: |
-          set -euo pipefail
-          source .ci-harness/scripts/lib/swift-toolchain.sh
-          result_bundle="apps/ios/build/LifecycleTestResults/OpenClawLifecycleTests.xcresult"
-          mkdir -p "apps/ios/build/LifecycleTestResults"
-          test_args=(
-            -only-testing:OpenClawTests/CloudflareAccessClientTests
-            -only-testing:OpenClawTests/CloudflareAccessBrowserPresenterTests
-            -only-testing:OpenClawTests/CloudflareAccessTransferTests
-            -only-testing:OpenClawTests/CloudflareAccessSessionStoreTests
-            -only-testing:OpenClawTests/ChatTypingFocusTests
-            -only-testing:OpenClawTests/ChatSendHydrationTests
-            -only-testing:OpenClawTests/GatewayIngressControllerTests
-            -only-testing:OpenClawTests/GatewayIngressLoginPreparationTests
-            -only-testing:OpenClawTests/GatewayConnectionControllerTests
-            -only-testing:OpenClawTests/LegacyManualGatewayMigrationTests
-            -only-testing:OpenClawTests/GatewayOperatorFleetTests
-            -only-testing:OpenClawTests/IOSMediaArtifactLoaderTests
-            -only-testing:OpenClawTests/OpenClawTypographyTests
-            -only-testing:OpenClawTests/GatewayConnectionSecurityTests
-            -only-testing:OpenClawTests/GatewaySettingsStoreTests
-          )
-          if [[ "$IOS_CI_PHASE" == "tests" ]]; then
-            test_args+=(
-              -only-testing:OpenClawLogicTests/WatchVoiceTurnTrackerTests
-              -only-testing:OpenClawTests/DelayedActionGateTests
-              -only-testing:OpenClawTests/IOSGatewayChatTransportTests
-              -only-testing:OpenClawTests/LocationServiceCallbackTests
-              -only-testing:OpenClawTests/LocationServiceOrderingTests
-              -only-testing:OpenClawTests/NodeAppModelInvokeTests
-              -only-testing:OpenClawTests/OpenClawAppDelegateTests
-              -only-testing:OpenClawTests/WatchMessagingInboundTransportTests
-              -only-testing:OpenClawTests/WatchSessionActivationGateTests
-              -only-testing:OpenClawTests/OpenClawTypographyTests
-              -only-testing:OpenClawTests/NotificationServingPreferenceTests
-              -only-testing:OpenClawTests/RootTabsSourceGuardTests
-              -only-testing:OpenClawTests/TraceHeadingVisualProofTests
-            )
-          fi
-          diagnostic_collection=on-failure
-          if [[ "$IOS_CI_PHASE" == "smoke" || "$IOS_MAIN_TIER" == "true" ]]; then
-            diagnostic_collection=never
-          fi
-          test_action=test
-          if [[ "$IOS_CI_PHASE" == "smoke" && "$HISTORICAL_TARGET" != "true" ]]; then
-            test_action=test-without-building
-          fi
-          run_apple_command_logged "${result_bundle%.xcresult}.log" xcodebuild \
-            -project apps/ios/OpenClaw.xcodeproj \
-            -scheme OpenClaw \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,id=${IOS_SIMULATOR_ID:?}" \
-            -resultBundlePath "$result_bundle" \
-            -parallel-testing-enabled NO \
-            -collect-test-diagnostics "$diagnostic_collection" \
-            "${test_args[@]}" \
-            "$test_action"
-          python3 scripts/ios-access-restart-proof.py "${IOS_SIMULATOR_ID:?}"
-          if [[ "$IOS_CI_PHASE" == "tests" && "$IOS_MAIN_TIER" != "true" ]]; then
-            run_apple_command_logged apps/ios/build/LifecycleTestResults/OpenClawWatchDeliveryUITests.log xcodebuild \
-              -project apps/ios/OpenClaw.xcodeproj \
-              -scheme OpenClawUITests \
-              -configuration Debug \
-              -destination "platform=iOS Simulator,id=${IOS_SIMULATOR_ID:?}" \
-              -resultBundlePath apps/ios/build/LifecycleTestResults/OpenClawWatchDeliveryUITests.xcresult \
-              -parallel-testing-enabled NO \
-              -only-testing:OpenClawUITests/OpenClawSnapshotUITests/testWatchMessageDeliveryIsReachableFromSettings \
-              -only-testing:OpenClawUITests/BootstrapSetupFailureUITests \
-              test
-          fi
-
-      - name: Run focused Apple Watch operation simulator tests
-        if: matrix.phase == 'tests' && needs.preflight.outputs.validation_tier != 'main' && needs.preflight.outputs.compatibility_target != 'true'
-        run: |
-          set -euo pipefail
-          source .ci-harness/scripts/lib/swift-toolchain.sh
-          simulator_id="$(
-            xcrun simctl list devices available --json | node --input-type=module -e '
-              const chunks = [];
-              for await (const chunk of process.stdin) chunks.push(chunk);
-              const runtimes = JSON.parse(Buffer.concat(chunks).toString("utf8")).devices;
-              const simulator = Object.values(runtimes)
-                .flat()
-                .find((device) => device.isAvailable && device.name.startsWith("Apple Watch"));
-              if (!simulator) {
-                console.error("No available Apple Watch simulator for operation lifecycle tests");
-                process.exit(1);
-              }
-              process.stdout.write(simulator.udid);
-            '
-          )"
-          # Reuse the Watch products already compiled by the generic iOS build.
-          # Resolve the selected target product from Xcode, not its DerivedData naming.
-          xcodebuild_args=(
-            -project apps/ios/OpenClaw.xcodeproj
-            -scheme OpenClawWatchApp
-            -configuration Debug
-            -destination "platform=watchOS Simulator,id=${simulator_id}"
-            CODE_SIGNING_ALLOWED=NO
-          )
-          test_args=(
-            -parallel-testing-enabled NO
-            -only-testing:OpenClawWatchTests/WatchInboxStoreOperationTests
-            -only-testing:OpenClawWatchTests/WatchSpeechPlaybackTests
-            -only-testing:OpenClawWatchTests/WatchRealtimeMediaTests
-            -only-testing:OpenClawWatchTests/WatchGatewayConfigurationTests
-          )
-          run_apple_command_logged apps/ios/build/LifecycleTestResults/OpenClawWatchBuild.log xcodebuild \
-            "${xcodebuild_args[@]}" "${test_args[@]}" build-for-testing
-          app_path="$(
-            xcodebuild "${xcodebuild_args[@]}" -showBuildSettings -json |
-              node --input-type=module -e '
-                import path from "node:path";
-                const chunks = [];
-                for await (const chunk of process.stdin) chunks.push(chunk);
-                const targets = JSON.parse(Buffer.concat(chunks).toString("utf8"))
-                  .filter((target) => target.target === "OpenClawWatchApp");
-                if (targets.length !== 1) throw new Error("Expected one Watch app target from Xcode");
-                const { TARGET_BUILD_DIR, FULL_PRODUCT_NAME } = targets[0].buildSettings;
-                if (!path.isAbsolute(TARGET_BUILD_DIR) || !FULL_PRODUCT_NAME) {
-                  throw new Error("Expected an absolute Watch app product from Xcode");
-                }
-                process.stdout.write(path.join(TARGET_BUILD_DIR, FULL_PRODUCT_NAME));
-              '
-          )"
-          companion_id="$(
-            xcrun simctl list pairs --json | node --input-type=module -e '
-              const chunks = [];
-              for await (const chunk of process.stdin) chunks.push(chunk);
-              const pairs = Object.values(JSON.parse(Buffer.concat(chunks).toString("utf8")).pairs);
-              const pair = pairs.find((entry) => entry.watch.udid === process.argv[1]);
-              process.stdout.write(pair?.phone.udid ?? "");
-            ' "$simulator_id"
-          )"
-          # XCTest connects through the paired phone, which can differ from IOS_SIMULATOR_ID.
-          if [[ -n "$companion_id" ]]; then
-            xcrun simctl bootstatus "$companion_id" -b
-          fi
-          xcrun simctl boot "$simulator_id" 2>/dev/null || true
-          xcrun simctl bootstatus "$simulator_id" -b
-          xcrun simctl install "$simulator_id" "$app_path"
-          run_apple_command_logged apps/ios/build/LifecycleTestResults/OpenClawWatchOperationTests.log xcodebuild \
-            "${xcodebuild_args[@]}" "${test_args[@]}" \
-            -resultBundlePath apps/ios/build/LifecycleTestResults/OpenClawWatchOperationTests.xcresult \
-            test-without-building
-
-      - name: Upload iOS lifecycle simulator evidence
-        if: ${{ always() && ((steps.ios_lifecycle_tests.outcome != '' && steps.ios_lifecycle_tests.outcome != 'skipped') || (steps.ios_voice_cleanup_tests.outcome != '' && steps.ios_voice_cleanup_tests.outcome != 'skipped') || (steps.ios_attachment_tests.outcome != '' && steps.ios_attachment_tests.outcome != 'skipped')) }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ios-lifecycle-tests-${{ needs.preflight.outputs.checkout_revision }}
-          path: |
-            apps/ios/build/LifecycleTestResults/*.xcresult
-            apps/ios/build/LifecycleTestResults/*.log
-            apps/ios/build/LifecycleTestResults/Attachment-*
-            apps/ios/build/LifecycleTestResults/attachments-*
-          if-no-files-found: warn
-          retention-days: 14
-
-  ios-release-e2e:
-    permissions:
-      actions: read
-      contents: read
-    needs: [preflight]
-    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.release_gate && needs.preflight.outputs.validation_tier == 'full' && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.checkout_revision == github.sha && needs.preflight.outputs.compatibility_target != 'true' && needs.preflight.outputs.run_ios_build == 'true' }}
-    uses: ./.github/workflows/ios-release-e2e.yml
-    with:
-      target_sha: *checkout_sha
-      mode: stock
-
-  ios-screenshot-shard:
-    permissions:
-      contents: read
-    name: "ios-screenshots-${{ matrix.device_family }}"
-    needs: [preflight]
-    if: &ios_screenshot_capture_gate ${{ needs.preflight.outputs.validation_tier != 'main' && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.compatibility_target != 'true' && ((github.event_name == 'workflow_dispatch' && !inputs.release_gate) || needs.preflight.outputs.run_ios_screenshots == 'true') }}
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && startsWith(inputs.dispatch_id, 'full-release-validation-') && vars.OPENCLAW_RELEASE_RUNNER_GROUP || '') != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON((github.event_name == 'workflow_dispatch' && startsWith(inputs.dispatch_id, 'full-release-validation-') && vars.OPENCLAW_RELEASE_RUNNER_GROUP || '')), toJSON('xcode-27-xlarge'))) || ('xcode-27-xlarge') }}
-    timeout-minutes: 90
-    env:
-      BUNDLE_DEPLOYMENT: "true"
-      BUNDLE_GEMFILE: ${{ github.workspace }}/apps/ios/Gemfile
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        device_family: [iphone, ipad-13]
-    steps:
-      - *platform_checkout_step
-
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
-        with:
-          ruby-version: "3.4.11"
-          bundler: "4.0.22"
-          bundler-cache: false
-          working-directory: apps/ios
-
-      - name: Install locked Fastlane bundle
-        working-directory: apps/ios
-        run: |
-          bundle _4.0.22_ install --jobs 4 --retry 3
-          bundle _4.0.22_ check
-          bundle _4.0.22_ exec fastlane --version
-
-      - *select_xcode_step
-
-      - name: Setup Node environment
-        uses: ./.ci-harness/.github/actions/setup-node-env
-        with:
-          cache-mode: *cache_mode
-          install-bun: "false"
-          node-version: ${{ env.IOS_SCREENSHOT_NODE_VERSION }}
-
-      - name: Install iOS screenshot tooling
-        run: |
-          swift_tools_dir="$RUNNER_TEMP/openclaw-swift-tools"
-          ./scripts/install-xcodegen.sh "$swift_tools_dir"
-          ./scripts/install-swift-tools.sh "$swift_tools_dir"
-          echo "$swift_tools_dir" >> "$GITHUB_PATH"
-          "$swift_tools_dir/xcodegen" --version
-          "$swift_tools_dir/swiftformat" --version
-          "$swift_tools_dir/swiftlint" version
-
-      - *install_watch_rust_toolchain
-
-      - name: Capture iOS device screenshot shard
-        id: device_screenshots
-        env:
-          OPENCLAW_SNAPSHOT_DEVICE_FAMILY: ${{ matrix.device_family }}
-          OPENCLAW_SNAPSHOT_SKIP_WATCH: ${{ matrix.device_family == 'iphone' && '1' || '0' }}
-          OPENCLAW_SNAPSHOT_DIAGNOSTICS: "1"
-        run: pnpm ios:screenshots
-
-      - name: Package iOS screenshot shard evidence
-        id: package_screenshot_evidence
-        env:
-          DEVICE_FAMILY: ${{ matrix.device_family }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          RUN_ID: ${{ github.run_id }}
-          TARGET_SHA: *checkout_sha
-          WORKFLOW_SHA: *workflow_sha
-        run: |
-          set -euo pipefail
-          fastlane_version="$(
-            source scripts/lib/ios-fastlane.sh
-            run_ios_fastlane --version 2>&1 | awk 'match($0, /^fastlane [0-9]+\.[0-9]+\.[0-9]+$/) { print substr($0, RSTART + 9, RLENGTH - 9); exit }'
-          )"
-          xcode_version="$(xcodebuild -version | paste -sd ' ' -)"
-          test "$xcode_version" = "$IOS_SCREENSHOT_XCODE_VERSION"
-          collect_args=(
-            collect
-            --family "$DEVICE_FAMILY"
-            --screenshots apps/ios/fastlane/screenshots/en-US
-            --xcresults apps/ios/build/SnapshotTestResults
-            --output apps/ios/build/ScreenshotEvidenceShard
-            --target-sha "$TARGET_SHA"
-            --workflow-sha "$WORKFLOW_SHA"
-            --run-id "$RUN_ID"
-            --run-attempt "$RUN_ATTEMPT"
-            --xcode-version "$xcode_version"
-            --fastlane-version "$fastlane_version"
-            --node-version "$(node --version)"
-          )
-          node .ci-harness/scripts/ios-screenshot-evidence.mjs "${collect_args[@]}"
-          if [[ "$DEVICE_FAMILY" == "ipad-13" ]]; then
-            collect_args[2]="watch"
-            node .ci-harness/scripts/ios-screenshot-evidence.mjs "${collect_args[@]}"
-          fi
-
-      - name: Upload iOS screenshot shard evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ios-release-screenshot-shard-${{ matrix.device_family }}-${{ needs.preflight.outputs.checkout_revision }}
-          path: apps/ios/build/ScreenshotEvidenceShard/
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload failed iOS screenshot attempt evidence
-        if: ${{ always() && (steps.device_screenshots.outcome == 'failure' || steps.package_screenshot_evidence.outcome == 'failure') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ios-release-screenshot-failure-${{ matrix.device_family }}-${{ needs.preflight.outputs.checkout_revision }}
-          path: |
-            apps/ios/fastlane/screenshots/en-US/*.png
-            apps/ios/build/SnapshotTestResults/capture-attempts.json
-            apps/ios/build/SnapshotTestResults/*.xcresult
-            apps/ios/build/SnapshotLogs/*.log
-            apps/ios/build/screenshot-diagnostics.json
-          if-no-files-found: warn
-          retention-days: 14
-
-  ios-screenshot-evidence:
-    permissions:
-      contents: read
-    name: "ios-screenshot-evidence"
-    needs: [preflight, ios-screenshot-shard]
-    if: *ios_screenshot_capture_gate
-    runs-on: *hosted_linux_runner
-    timeout-minutes: 10
-    steps:
-      - *linux_node_checkout_step
-
-      - name: Setup screenshot evidence Node
-        uses: ./.ci-harness/.github/actions/setup-node-env
-        with:
-          cache-mode: *cache_mode
-          install-bun: "false"
-          install-deps: "false"
-          node-version: ${{ env.IOS_SCREENSHOT_NODE_VERSION }}
-
-      - name: Download iOS screenshot shard evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: ios-release-screenshot-shard-*-${{ needs.preflight.outputs.checkout_revision }}
-          path: apps/ios/build/ScreenshotEvidenceInputs
-          merge-multiple: false
-
-      - name: Reduce iOS screenshot evidence
-        id: reduce_screenshot_evidence
-        env:
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          RUN_ID: ${{ github.run_id }}
-          TARGET_SHA: *checkout_sha
-          WORKFLOW_SHA: *workflow_sha
-        run: |
-          node .ci-harness/scripts/ios-screenshot-evidence.mjs reduce \
-            --input apps/ios/build/ScreenshotEvidenceInputs \
-            --output . \
-            --target-sha "$TARGET_SHA" \
-            --workflow-sha "$WORKFLOW_SHA" \
-            --run-id "$RUN_ID" \
-            --run-attempt "$RUN_ATTEMPT" \
-            --xcode-version "$IOS_SCREENSHOT_XCODE_VERSION" \
-            --fastlane-version "$IOS_SCREENSHOT_FASTLANE_VERSION" \
-            --node-version "$(node --version)"
-
-      - name: Upload failed iOS screenshot reducer evidence
-        if: ${{ always() && steps.reduce_screenshot_evidence.outcome == 'failure' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ios-release-screenshot-reducer-failure-${{ needs.preflight.outputs.checkout_revision }}
-          path: |
-            apps/ios/build/ScreenshotEvidenceInputs/**/screenshots/*.png
-            apps/ios/build/ScreenshotEvidenceInputs/**/xcresults/*.xcresult
-            apps/ios/build/ScreenshotEvidenceInputs/**/manifest.json
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Upload iOS release screenshot evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: ios-release-screenshots-${{ needs.preflight.outputs.checkout_revision }}
-          path: |
-            apps/ios/fastlane/screenshots/en-US/*.png
-            apps/ios/build/SnapshotTestResults/*.xcresult
-            apps/ios/build/ScreenshotEvidence/manifest.json
-          if-no-files-found: error
-          retention-days: 14
-
-  android:
-    permissions:
-      contents: read
-    name: ${{ matrix.check_name || 'android' }}
-    needs: [preflight]
-    if: needs.preflight.outputs.run_android_job == 'true'
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && startsWith(inputs.dispatch_id, 'full-release-validation-') && vars.OPENCLAW_RELEASE_RUNNER_GROUP || '') != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON((github.event_name == 'workflow_dispatch' && startsWith(inputs.dispatch_id, 'full-release-validation-') && vars.OPENCLAW_RELEASE_RUNNER_GROUP || '')), toJSON((needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND) == 'github' && 'ubuntu-24.04' || (contains(fromJSON('["hybrid","runson"]'), (needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND)) && github.run_attempt > 1) && 'ubuntu-24.04' || ((github.event_name == 'workflow_dispatch' && ((needs.preflight.outputs.node_runner_backend != 'runson' && needs.preflight.outputs.ci_qualification != 'true') || github.run_attempt != 1)) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04')))) || ((needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND) == 'github' && 'ubuntu-24.04' || (contains(fromJSON('["hybrid","runson"]'), (needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND)) && github.run_attempt > 1) && 'ubuntu-24.04' || ((github.event_name == 'workflow_dispatch' && ((needs.preflight.outputs.node_runner_backend != 'runson' && needs.preflight.outputs.ci_qualification != 'true') || github.run_attempt != 1)) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04')) }}
-    timeout-minutes: ${{ matrix.task == 'build-play' && ((needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND) == 'github' || (contains(fromJSON('["hybrid","runson"]'), (needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND)) && github.run_attempt > 1) || (github.event_name == 'workflow_dispatch' && needs.preflight.outputs.ci_shape != 'main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.run_attempt > 1) || github.repository != 'openclaw/openclaw') && 35 || 20 }}
-    strategy:
-      fail-fast: false
-      max-parallel: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule' && github.repository == 'openclaw/openclaw' && github.run_attempt == 1 && 4 || 2 }}
-      matrix: ${{ fromJson(needs.preflight.outputs.android_matrix) }}
-    steps:
-      - &android_checkout_step
-        name: Checkout
-        shell: bash
-        env:
-          CHECKOUT_KIND: android
-          CHECKOUT_REPO: ${{ github.repository }}
-          CHECKOUT_TOKEN: ${{ github.token }}
-          CHECKOUT_SHA: *checkout_sha
-        run: *owned_checkout_run
-
-      - &android_toolchain_checkout_step
-        name: Checkout CI Android toolchain action
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: .ci-harness
-          sparse-checkout: .github/actions
-          persist-credentials: false
-
-      - name: Setup Android toolchain
-        id: android-toolchain
-        uses: ./.ci-harness/.github/actions/setup-android-toolchain
-        with:
-          cache-mode: ${{ needs.preflight.outputs.cache_write_allowed == 'true' && 'read-write' || needs.preflight.outputs.cache_mode }}
-
-      - name: Setup Node environment for native resources
-        if: needs.preflight.outputs.use_compatible_android_ci != 'true'
-        uses: ./.ci-harness/.github/actions/setup-node-env
-        with:
-          cache-mode: *cache_mode
-          install-bun: "false"
-          install-deps: "false"
-
-      - name: Install native asset dependencies
-        if: needs.preflight.outputs.use_compatible_android_ci != 'true'
-        env:
-          CI: "true"
-        run: *mermaid_renderer_install_run
-
-      - name: Mount Gradle sticky disk
-        if: &android_gradle_sticky_disk_gate vars.OPENCLAW_CI_RUNNER_BACKEND != 'github' && !(contains(fromJSON('["hybrid","runson"]'), vars.OPENCLAW_CI_RUNNER_BACKEND) && github.run_attempt > 1) && github.event_name != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'openclaw/openclaw')
-        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
-        with:
-          # One disk per matrix task keeps thin dependency sets off heavier lanes. Gradle owns invalidation.
-          key: ${{ github.repository }}-gradle-v2-${{ matrix.task }}
-          path: /var/tmp/openclaw-gradle
-          # Only successful protected pushes publish. Explicit commit:true refreshes same-size changes.
-          commit: ${{ github.event_name != 'pull_request' && 'true' || 'false' }}
-
-      - name: Point Gradle at the sticky disk
-        if: *android_gradle_sticky_disk_gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          sticky_root=/var/tmp/openclaw-gradle
-          mkdir -p "$sticky_root/gradle-user-home"
-          echo "GRADLE_USER_HOME=$sticky_root/gradle-user-home" >> "$GITHUB_ENV"
-
-      - name: Restore Robolectric Maven cache
-        id: robolectric-cache
-        if: startsWith(matrix.task, 'test-') && needs.preflight.outputs.cache_mode != 'off'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: /var/tmp/openclaw-robolectric-m2
-          key: ${{ github.repository }}-robolectric-m2-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.task }}-${{ hashFiles('apps/android/**/*.gradle*', 'apps/android/**/gradle-wrapper.properties', 'apps/android/gradle/libs.versions.toml', 'apps/android/**/src/test*/**') }}
-          restore-keys: |
-            ${{ github.repository }}-robolectric-m2-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.task }}-
-
-      - name: Configure Robolectric Maven cache
-        if: startsWith(matrix.task, 'test-')
-        shell: bash
-        run: |
-          set -euo pipefail
-          maven_repo=/var/tmp/openclaw-robolectric-m2
-          init_script="$RUNNER_TEMP/openclaw-robolectric-init.gradle"
-          mkdir -p "$maven_repo"
-          cat >"$init_script" <<'GROOVY'
-          println "Gradle JVM: runtime=${System.getProperty('java.runtime.version')} vendor=${System.getProperty('java.vendor')} home=${System.getProperty('java.home')}"
-          allprojects {
-            tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
-              systemProperty "maven.repo.local", System.getenv("OPENCLAW_ROBOLECTRIC_M2")
-              // Record the executing launcher; cached results do not prove this JVM ran tests.
-              doFirst {
-                def metadata = javaLauncher.get().metadata
-                logger.lifecycle("Test JVM ${path}: runtime=${metadata.javaRuntimeVersion} vendor=${metadata.vendor} home=${metadata.installationPath.asFile} forks=${maxParallelForks}")
-              }
-            }
-          }
-          GROOVY
-          echo "OPENCLAW_ROBOLECTRIC_M2=$maven_repo" >> "$GITHUB_ENV"
-          echo "OPENCLAW_ROBOLECTRIC_INIT=$init_script" >> "$GITHUB_ENV"
-
-      - name: Run Android ${{ matrix.task }}
-        working-directory: apps/android
-        env:
-          JAVA_HOME: ${{ steps.android-toolchain.outputs.gradle-java-home }}
-          CI_RUNNER_BACKEND: ${{ ((needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND) == 'github' || (contains(fromJSON('["hybrid","runson"]'), (needs.preflight.outputs.ci_qualification == 'true' && (github.run_attempt == 1 && needs.preflight.outputs.qualification_runner_backend || 'github') || vars.OPENCLAW_CI_RUNNER_BACKEND)) && github.run_attempt > 1) || (github.event_name == 'workflow_dispatch' && needs.preflight.outputs.ci_shape != 'main') || github.repository != 'openclaw/openclaw' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != 'openclaw/openclaw')) && 'github' || 'blacksmith' }}
-          CI_MAIN_QUALIFICATION: ${{ needs.preflight.outputs.ci_shape == 'main' && 'true' || 'false' }}
-          TASK: ${{ matrix.task }}
-          RUN_LINT: ${{ matrix.lint && 'true' || 'false' }}
-          APP_LINT: ${{ matrix.app_lint || '' }}
-          BUILD_BENCHMARK: ${{ matrix.build_benchmark && 'true' || 'false' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          android_build_metadata=()
-          if [ "$RUN_LINT" = "true" ] || [ -n "$APP_LINT" ]; then
-            # Repeated native invocations in one row must not invalidate BuildConfig by time alone.
-            android_build_timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            android_build_metadata=("-PopenclawBuildTimestamp=$android_build_timestamp")
-          fi
-          case "$TASK" in
-            test-play)
-              ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache --init-script "$OPENCLAW_ROBOLECTRIC_INIT" \
-                :app:testPlayDebugUnitTest \
-                :wear-shared:testDebugUnitTest
-              ;;
-            test-play-compat)
-              # Frozen targets predate the Wear shared project. Keep their app-owned
-              # Play unit tests without importing current Android modules.
-              ./gradlew --no-daemon --build-cache --init-script "$OPENCLAW_ROBOLECTRIC_INIT" \
-                :app:testPlayDebugUnitTest
-              ;;
-            test-third-party)
-              ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache --init-script "$OPENCLAW_ROBOLECTRIC_INIT" \
-                :app:testThirdPartyDebugUnitTest
-              ;;
-            test-wear)
-              ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache --init-script "$OPENCLAW_ROBOLECTRIC_INIT" \
-                :wear:testDebugUnitTest
-              if [ "$RUN_LINT" = "true" ]; then
-                ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache :wear:lintDebug
-              fi
-              ;;
-            build-play)
-              if [ "$CI_RUNNER_BACKEND" = "github" ] || { [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$CI_MAIN_QUALIFICATION" != "true" ]; }; then
-                # GitHub-hosted runners have less memory headroom. Separate Gradle
-                # processes release each variant's build state before the next starts.
-                ./gradlew --no-daemon --build-cache \
-                  :app:assemblePlayDebug \
-                  :app:lintPlayDebug
-                ./gradlew --no-daemon --build-cache \
-                  :app:assembleThirdPartyDebug \
-                  :app:lintThirdPartyDebug
-                ./gradlew --no-daemon --build-cache \
-                  :benchmark:assembleDebug \
-                  :wear-shared:assembleDebug \
-                  :wear-shared:lintDebug
-              else
-                ./gradlew --no-daemon --build-cache \
-                  :app:assemblePlayDebug \
-                  :app:assembleThirdPartyDebug \
-                  :app:lintPlayDebug \
-                  :app:lintThirdPartyDebug \
-                  :benchmark:assembleDebug \
-                  :wear-shared:assembleDebug \
-                  :wear-shared:lintDebug
-              fi
-              ;;
-            build-wear)
-              ./gradlew --no-daemon --build-cache \
-                :wear:assembleDebug \
-                :wear:lintDebug
-              ;;
-            build-play-compat)
-              # Frozen targets keep their target-owned Android build contract. New lint rules
-              # must not retroactively reject a previously validated release branch.
-              ./gradlew --no-daemon --build-cache :app:assemblePlayDebug
-              ;;
-            ktlint)
-              # Mirrors `pnpm android:lint` to keep formatting drift out of main.
-              ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache \
-                :app:ktlintCheck \
-                :benchmark:ktlintCheck \
-                :wear:ktlintCheck \
-                :wear-shared:ktlintCheck
-              if [ "$BUILD_BENCHMARK" = "true" ]; then
-                ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache :benchmark:assembleDebug
-              fi
-              ;;
-            *)
-              echo "Unsupported Android task: $TASK" >&2
-              exit 1
-              ;;
-          esac
-
-          # The lighter Wear and Kotlin-lint rows keep app lint off the phone-test path.
-          case "$APP_LINT" in
-            third-party)
-              ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache :app:lintThirdPartyDebug
-              ;;
-            play)
-              ./gradlew "${android_build_metadata[@]}" --no-daemon --build-cache :app:lintPlayDebug :wear-shared:lintDebug
-              ;;
-            "") ;;
-            *)
-              echo "Unsupported Android app lint flavor: $APP_LINT" >&2
-              exit 1
-              ;;
-          esac
-
-      - name: Upload Android test reports
-        if: ${{ !cancelled() && startsWith(matrix.task, 'test-') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: android-test-reports-${{ matrix.task }}-${{ needs.preflight.outputs.checkout_revision }}-${{ github.run_attempt }}
-          path: |
-            apps/android/app/build/test-results/test*UnitTest/TEST-*.xml
-            apps/android/wear/build/test-results/test*UnitTest/TEST-*.xml
-            apps/android/wear-shared/build/test-results/test*UnitTest/TEST-*.xml
-            apps/android/**/hs_err_pid*.log
-            apps/android/**/replay_pid*.log
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Save Robolectric Maven cache
-        if: success() && startsWith(matrix.task, 'test-') && needs.preflight.outputs.cache_write_allowed == 'true' && steps.robolectric-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: /var/tmp/openclaw-robolectric-m2
-          key: ${{ steps.robolectric-cache.outputs.cache-primary-key }}
-
-  android-screenshots:
-    permissions:
-      contents: read
-    name: "android-screenshots"
-    needs: [preflight]
-    if: ${{ needs.preflight.outputs.validation_tier != 'main' && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.compatibility_target != 'true' && ((github.event_name == 'workflow_dispatch' && !inputs.release_gate) || needs.preflight.outputs.run_android_screenshots == 'true') }}
-    runs-on: *hosted_linux_runner
-    timeout-minutes: 90
-    steps:
-      - *android_checkout_step
-      - *android_toolchain_checkout_step
-
-      - name: Setup Android screenshot toolchain
-        id: android-toolchain
-        uses: ./.ci-harness/.github/actions/setup-android-toolchain
-        with:
-          cache-mode: *cache_mode
-          install-screenshot-emulators: "true"
-
-      - name: Setup Node environment for native resources
-        uses: ./.ci-harness/.github/actions/setup-node-env
-        with:
-          cache-mode: *cache_mode
-          install-bun: "false"
-          install-deps: "false"
-
-      - name: Install native asset dependencies
-        env:
-          CI: "true"
-        run: *mermaid_renderer_install_run
-
-      - name: Prepare Linux screenshot image tools
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends imagemagick
-          test -x /usr/bin/convert
-          test -x /usr/bin/identify
-          tool_dir="$RUNNER_TEMP/openclaw-android-tools"
-          mkdir -p "$tool_dir"
-          install -m 700 scripts/android-sips-linux.sh "$tool_dir/android-sips-linux.sh"
-
-      - name: Capture phone and Wear store screenshots
-        env:
-          JAVA_HOME: ${{ steps.android-toolchain.outputs.gradle-java-home }}
-          SIPS: ${{ runner.temp }}/openclaw-android-tools/android-sips-linux.sh
-        run: pnpm android:screenshots
-
-      - name: Retain Android screenshot evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: android-store-screenshots-${{ needs.preflight.outputs.checkout_revision }}-${{ github.run_attempt }}
-          path: |
-            apps/android/fastlane/metadata/android/en-US/images/phoneScreenshots/*.jpg
-            apps/android/fastlane/metadata/android/en-US/images/wearScreenshots/*.jpg
-            .artifacts/android-screenshots/latest/*/manifest.txt
-            .artifacts/android-screenshots/latest/*/ui-dumps/*.xml
-            .artifacts/android-screenshots/latest/*/activity-start/*.txt
-            .artifacts/android-screenshots/latest/*/emulator.log
-            .artifacts/android-screenshots/latest/*/emulator-args.txt
-            .artifacts/android-screenshots/latest/*/process-status.txt
-            .artifacts/android-screenshots/latest/*/logcat.txt
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 14
-
-  android-access-native:
-    permissions:
-      contents: read
-    needs: [preflight]
-    if: needs.preflight.outputs.run_android_access_native == 'true'
-    runs-on: *hosted_linux_runner
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - page-size: 4096
-            image: google_apis
-          - page-size: 16384
-            image: google_apis_ps16k
-    steps:
-      - *android_checkout_step
-
-      - *android_toolchain_checkout_step
-
-      - name: Setup Android toolchain
-        uses: ./.ci-harness/.github/actions/setup-android-toolchain
-        with:
-          cache-mode: *cache_mode
-
-      - name: Setup Node environment for native resources
-        uses: ./.ci-harness/.github/actions/setup-node-env
-        with:
-          cache-mode: *cache_mode
-          install-bun: "false"
-
-      - name: Run packaged Access crypto on Android
-        shell: bash
-        env:
-          EXPECTED_PAGE_SIZE: ${{ matrix.page-size }}
-          SYSTEM_IMAGE: system-images;android-36;${{ matrix.image }};x86_64
-        run: |
-          set -euo pipefail
-          test "$RUNNER_OS/$RUNNER_ARCH" = Linux/X64
-          test -c /dev/kvm
-          /usr/bin/sudo /usr/bin/setfacl -m "u:$(id -un):rw" /dev/kvm
-          test -r /dev/kvm && test -w /dev/kvm
-          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install emulator "$SYSTEM_IMAGE"
-          acceleration="$(/usr/bin/timeout --signal=TERM --kill-after=2s 15s emulator -accel-check 2>&1)"
-          printf '%s\n' "$acceleration"
-          grep -Eiq '\bKVM\b.*\b(available|usable)\b' <<<"$acceleration"
-          printf 'no\n' | avdmanager create avd --name openclaw-access --package "$SYSTEM_IMAGE" --device pixel_6
-          emulator -avd openclaw-access -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect >"$RUNNER_TEMP/access-emulator.log" 2>&1 &
-          emulator_pid=$!
-          trap 'adb -s emulator-5554 emu kill >/dev/null 2>&1 || true; wait "$emulator_pid" || true' EXIT
-          /usr/bin/timeout --signal=TERM --kill-after=2s 180s bash -c '
-            adb -s emulator-5554 wait-for-device
-            until [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r")" == 1 ]]; do sleep 2; done
-          '
-          test "$(adb -s emulator-5554 shell getconf PAGE_SIZE | tr -d '\r')" = "$EXPECTED_PAGE_SIZE"
-          if [[ "$EXPECTED_PAGE_SIZE" == 16384 ]]; then
-            # ps16k simulates 16 KiB pages on x86_64; compat mode must not hide loader failures.
-            adb -s emulator-5554 shell setprop bionic.linker.16kb.app_compat.enabled false
-            adb -s emulator-5554 shell setprop pm.16kb.app_compat.disabled true
-            test "$(adb -s emulator-5554 shell getprop bionic.linker.16kb.app_compat.enabled | tr -d '\r')" = false
-            test "$(adb -s emulator-5554 shell getprop pm.16kb.app_compat.disabled | tr -d '\r')" = true
-          fi
-          node --import ./scripts/tsx.mjs scripts/run-android-gradle.mts \
-            :app:connectedPlayDebugAndroidTest \
-            -Pandroid.testInstrumentationRunnerArguments.expectedPageSize="$EXPECTED_PAGE_SIZE" \
-            -Pandroid.testInstrumentationRunnerArguments.class=ai.openclaw.app.gateway.CloudflareAccessNativeTest \
-            -PopenclawBuildTimestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          apk="$(python3 - <<'PY'
-          from pathlib import Path
-          import json
-          import xml.etree.ElementTree as ET
-          import zipfile
-          reports = Path('apps/android/app/build/outputs/androidTest-results/connected').rglob('*.xml')
-          cases = [case for report in reports for case in ET.parse(report).getroot().iter('testcase')
-                   if case.get('classname') == 'ai.openclaw.app.gateway.CloudflareAccessNativeTest']
-          assert len(cases) == 1, 'The packaged native test must execute exactly once'
-          assert all(case.find(tag) is None for case in cases for tag in ('failure', 'error', 'skipped')), 'The packaged native test failed or skipped'
-          directory = Path('apps/android/app/build/outputs/apk/play/debug')
-          metadata = json.loads((directory / 'output-metadata.json').read_text())
-          assert metadata['variantName'] == 'playDebug' and metadata['artifactType']['type'] == 'APK'
-          assert len(metadata['elements']) == 1, 'Expected one universal playDebug APK'
-          element = metadata['elements'][0]
-          filename = element['outputFile']
-          assert not element['filters'] and Path(filename).name == filename and filename.endswith('.apk')
-          selected = directory / filename
-          with zipfile.ZipFile(selected) as archive:
-              libraries = {name for name in archive.namelist() if name.endswith('/libsodium.so')}
-          assert libraries == {f'lib/{abi}/libsodium.so' for abi in ('armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64')}
-          print(selected)
-          PY
-          )"
-          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk"
-
-      - name: Upload Access native test reports
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: android-access-native-${{ matrix.page-size }}-${{ needs.preflight.outputs.checkout_revision }}-${{ github.run_attempt }}
-          path: |
-            apps/android/app/build/outputs/androidTest-results/connected/**
-            apps/android/app/build/reports/androidTests/connected/**
-          if-no-files-found: error
-          retention-days: 14
 
   published-driver-update:
     permissions:
@@ -6340,7 +4676,6 @@ jobs:
       - check-plan
       - build-artifacts
       - control-ui-performance
-      - native-i18n
       - checks-ui
       - checks-ui-e2e
       - checks-ui-e2e-real-gateway
@@ -6362,14 +4697,6 @@ jobs:
       - skills-python
       - checks-windows
       - macos-node
-      - macos-swift
-      - ios-build
-      - ios-release-e2e
-      - ios-screenshot-shard
-      - ios-screenshot-evidence
-      - android
-      - android-screenshots
-      - android-access-native
       - docker-seed-e2e
       - published-driver-update
       - pr-fail-fast
@@ -6401,7 +4728,6 @@ jobs:
         shell: bash
         env:
           RELEASE_FAST_LANE: ${{ needs.preflight.outputs.release_fast_lane }}
-          ALLOW_COALESCED_IOS: ${{ github.event_name == 'schedule' && github.repository == 'openclaw/openclaw' && github.ref == 'refs/heads/main' }}
           ALLOW_KNOWN_MAIN_RED: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 && needs.pr-fail-fast.result == 'success' && needs.pr-fail-fast.outputs.known_main_red_attempt == format('{0}', github.run_attempt) }}
           JOB_RESULTS: |
             preflight=${{ needs.preflight.result }}|true
@@ -6409,7 +4735,6 @@ jobs:
             check-plan=${{ needs.check-plan.result }}|${{ needs.preflight.outputs.run_check_plan }}
             build-artifacts=${{ needs.build-artifacts.result }}|${{ needs.preflight.outputs.run_build_artifacts }}
             control-ui-performance=${{ needs.control-ui-performance.result }}|${{ needs.preflight.outputs.run_control_ui_performance }}
-            native-i18n=${{ needs.native-i18n.result }}|${{ needs.preflight.outputs.run_native_i18n }}
             checks-ui=${{ needs.checks-ui.result }}|${{ needs.preflight.outputs.run_ui_tests }}
             checks-ui-e2e=${{ needs.checks-ui-e2e.result }}|${{ needs.preflight.outputs.run_ui_e2e == 'true' && needs.preflight.outputs.compatibility_target != 'true' }}
             checks-ui-e2e-real-gateway=${{ needs.checks-ui-e2e-real-gateway.result }}|${{ needs.preflight.outputs.run_ui_real_gateway == 'true' && needs.preflight.outputs.compatibility_target != 'true' }}
@@ -6431,14 +4756,6 @@ jobs:
             skills-python=${{ needs.skills-python.result }}|${{ needs.preflight.outputs.run_skills_python_job }}
             checks-windows=${{ needs.checks-windows.result }}|${{ needs.preflight.outputs.run_checks_windows }}
             macos-node=${{ needs.macos-node.result }}|${{ needs.preflight.outputs.run_macos_node }}
-            macos-swift=${{ needs.macos-swift.result }}|${{ needs.preflight.outputs.run_macos_swift }}
-            ios-build=${{ needs.ios-build.result }}|${{ needs.preflight.outputs.run_ios_build }}
-            ios-release-e2e=${{ needs.ios-release-e2e.result }}|${{ github.event_name == 'workflow_dispatch' && !inputs.release_gate && needs.preflight.outputs.validation_tier == 'full' && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.checkout_revision == github.sha && needs.preflight.outputs.compatibility_target != 'true' && needs.preflight.outputs.run_ios_build == 'true' }}
-            ios-screenshot-shard=${{ needs.ios-screenshot-shard.result }}|${{ needs.preflight.outputs.validation_tier != 'main' && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.compatibility_target != 'true' && ((github.event_name == 'workflow_dispatch' && !inputs.release_gate) || needs.preflight.outputs.run_ios_screenshots == 'true') }}
-            ios-screenshot-evidence=${{ needs.ios-screenshot-evidence.result }}|${{ needs.preflight.outputs.validation_tier != 'main' && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.compatibility_target != 'true' && ((github.event_name == 'workflow_dispatch' && !inputs.release_gate) || needs.preflight.outputs.run_ios_screenshots == 'true') }}
-            android=${{ needs.android.result }}|${{ needs.preflight.outputs.run_android_job }}
-            android-screenshots=${{ needs.android-screenshots.result }}|${{ needs.preflight.outputs.validation_tier != 'main' && needs.preflight.outputs.release_scope == 'full' && needs.preflight.outputs.compatibility_target != 'true' && ((github.event_name == 'workflow_dispatch' && !inputs.release_gate) || needs.preflight.outputs.run_android_screenshots == 'true') }}
-            android-access-native=${{ needs.android-access-native.result }}|${{ needs.preflight.outputs.run_android_access_native }}
             docker-seed-e2e=${{ needs.docker-seed-e2e.result }}|${{ needs.preflight.outputs.run_docker_seed_e2e }}
             published-driver-update=${{ needs.published-driver-update.result }}|${{ needs.preflight.outputs.run_published_driver_update == 'true' && needs.preflight.outputs.checkout_revision == github.sha }}
             pr-fail-fast=${{ github.run_attempt != 1 && 'skipped' || needs.pr-fail-fast.result }}|${{ github.event_name == 'pull_request' && github.run_attempt == 1 && github.repository == 'openclaw/openclaw' && needs.preflight.outputs.run_checks_node_core_nondist == 'true' && needs.preflight.outputs.disable_fail_fast != 'true' }}
@@ -6463,11 +4780,6 @@ jobs:
                   ;;
               esac
             fi
-            # Only scheduled iOS pending-job replacement delegates proof to the next hour.
-            if [[ "${ALLOW_COALESCED_IOS:-false}" == "true" && "$name:$selected:$result" == "ios-build:true:cancelled" ]]; then
-              echo "::notice title=Hourly iOS proof coalesced::A later scheduled iOS job owns simulator proof."
-              continue
-            fi
             case "$selected:$result" in
               true:success | false:success | false:skipped) ;;
               *)
@@ -6481,7 +4793,7 @@ jobs:
 
       # Writes require this exact-attempt receipt; skipped CI proves nothing.
       - name: Confirm validated workflow revision
-        if: success() && needs.preflight.outputs.validation_tier == 'full' && needs.preflight.outputs.checkout_revision == github.sha && (github.event_name != 'workflow_dispatch' || (!startsWith(inputs.dispatch_id, 'full-release-validation-') && !inputs.release_gate && inputs.target_ref == '' && inputs.release_scope == 'full' && inputs.include_android))
+        if: success() && needs.preflight.outputs.validation_tier == 'full' && needs.preflight.outputs.checkout_revision == github.sha && (github.event_name != 'workflow_dispatch' || (!startsWith(inputs.dispatch_id, 'full-release-validation-') && !inputs.release_gate && inputs.target_ref == '' && inputs.release_scope == 'full'))
         run: echo "Full CI validated the immutable workflow revision."
   seal_release_child_evidence:
     name: Seal full release child evidence
@@ -6491,7 +4803,6 @@ jobs:
       - security-fast
       - build-artifacts
       - control-ui-performance
-      - native-i18n
       - checks-ui
       - checks-ui-e2e
       - checks-ui-e2e-real-gateway
@@ -6513,14 +4824,6 @@ jobs:
       - skills-python
       - checks-windows
       - macos-node
-      - macos-swift
-      - ios-build
-      - ios-release-e2e
-      - ios-screenshot-shard
-      - ios-screenshot-evidence
-      - android
-      - android-screenshots
-      - android-access-native
       - docker-seed-e2e
       - published-driver-update
       - pr-fail-fast

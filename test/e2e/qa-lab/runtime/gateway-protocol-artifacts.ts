@@ -104,80 +104,6 @@ await fs.writeFile(
 `;
 }
 
-function buildSwiftProtocolCompatibilityHarness() {
-  return `import Foundation
-
-enum GatewayProtocolArtifactError: Error {
-    case unexpected(String)
-}
-
-@main
-struct GatewayProtocolArtifactHarness {
-    static func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
-        try JSONDecoder().decode(type, from: Data(json.utf8))
-    }
-
-    static func main() throws {
-        let request = try decode(
-            GatewayFrame.self,
-            #"{"type":"req","id":"old-req","method":"health"}"#)
-        let additiveRequest = try decode(
-            GatewayFrame.self,
-            #"{"type":"req","id":"new-req","method":"health","traceparent":"00-0123456789abcdef0123456789abcdef-0123456789abcdef-01","futureField":true}"#)
-        let response = try decode(
-            GatewayFrame.self,
-            #"{"type":"res","id":"old-req","ok":true}"#)
-        let additiveResponse = try decode(
-            GatewayFrame.self,
-            #"{"type":"res","id":"new-req","ok":true,"payload":{"healthy":true},"futureField":true}"#)
-        let event = try decode(
-            GatewayFrame.self,
-            #"{"type":"event","event":"tick"}"#)
-        let additiveEvent = try decode(
-            GatewayFrame.self,
-            #"{"type":"event","event":"tick","payload":{"ts":1},"seq":2,"futureField":true}"#)
-        let legacyConnect = try decode(
-            ConnectParams.self,
-            #"{"minProtocol":4,"maxProtocol":4,"client":{"id":"test","version":"old","platform":"ios","mode":"test"}}"#)
-        let additiveConnect = try decode(
-            ConnectParams.self,
-            #"{"minProtocol":4,"maxProtocol":4,"client":{"id":"test","version":"new","platform":"ios","mode":"test","futureClientField":true},"role":"operator","scopes":["operator.read"],"locale":"en-US","futureField":true}"#)
-
-        guard case let .req(oldRequest) = request,
-              case let .req(newRequest) = additiveRequest,
-              case let .res(oldResponse) = response,
-              case let .res(newResponse) = additiveResponse,
-              case let .event(oldEvent) = event,
-              case let .event(newEvent) = additiveEvent
-        else {
-            throw GatewayProtocolArtifactError.unexpected("frame discriminator")
-        }
-        guard oldRequest.params == nil,
-              oldRequest.traceparent == nil,
-              newRequest.traceparent == "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
-              oldResponse.payload == nil,
-              newResponse.payload != nil,
-              oldEvent.seq == nil,
-              newEvent.seq == 2,
-              legacyConnect.role == nil,
-              legacyConnect.scopes == nil,
-              legacyConnect.locale == nil,
-              additiveConnect.role == "operator",
-              additiveConnect.scopes == ["operator.read"],
-              additiveConnect.locale == "en-US"
-        else {
-            throw GatewayProtocolArtifactError.unexpected("legacy or additive decode")
-        }
-        print("gateway Swift generated-model compatibility passed")
-    }
-}
-`;
-}
-
-export function buildPortableSwiftAnyCodableSource(source: string) {
-  return source.includes("import CoreFoundation") ? source : `import CoreFoundation\n${source}`;
-}
-
 export function parseGatewayProtocolArtifactOptions(
   args: readonly string[],
   cwd = process.cwd(),
@@ -415,50 +341,6 @@ async function packAndInspectProtocol(params: {
   };
 }
 
-async function compileAndRunSwiftProtocolModels(params: {
-  appendLog: (chunk: unknown) => void;
-  artifactBase: string;
-  repoRoot: string;
-}) {
-  const swiftArtifactDir = path.join(params.artifactBase, "swift");
-  const anyCodablePath = path.join(swiftArtifactDir, "AnyCodable.swift");
-  const harnessPath = path.join(swiftArtifactDir, "GatewayProtocolArtifactHarness.swift");
-  const executablePath = path.join(swiftArtifactDir, "gateway-protocol-artifact-harness");
-  await fs.rm(swiftArtifactDir, { force: true, recursive: true });
-  await fs.mkdir(swiftArtifactDir, { recursive: true });
-  await runCommand({
-    args: ["scripts/prepare-native-protocol.mjs", "--language", "swift", "--out", swiftArtifactDir],
-    appendLog: params.appendLog,
-    command: "node",
-    cwd: params.repoRoot,
-  });
-  const anyCodableSource = await fs.readFile(
-    path.join(params.repoRoot, "apps/shared/OpenClawKit/Sources/OpenClawProtocol/AnyCodable.swift"),
-    "utf8",
-  );
-  // Linux Foundation does not re-export the CoreFoundation type-ID helpers.
-  await fs.writeFile(anyCodablePath, buildPortableSwiftAnyCodableSource(anyCodableSource), "utf8");
-  await fs.writeFile(harnessPath, buildSwiftProtocolCompatibilityHarness(), "utf8");
-  await runCommand({
-    args: [
-      anyCodablePath,
-      path.join(swiftArtifactDir, "GatewayModels.swift"),
-      harnessPath,
-      "-o",
-      executablePath,
-    ],
-    appendLog: params.appendLog,
-    command: "swiftc",
-    cwd: params.repoRoot,
-  });
-  await runCommand({
-    args: [],
-    appendLog: params.appendLog,
-    command: executablePath,
-    cwd: params.repoRoot,
-  });
-}
-
 async function runGatewayProtocolArtifactsProducer(
   options: ProducerOptions,
 ): Promise<QaEvidenceSummaryJson> {
@@ -474,8 +356,6 @@ async function runGatewayProtocolArtifactsProducer(
         "packages/gateway-protocol/package.json",
         "packages/gateway-protocol/src/schema/protocol-schemas.ts",
         "scripts/protocol-gen.ts",
-        "scripts/protocol-gen-swift.ts",
-        "apps/shared/OpenClawKit/Tests/OpenClawKitTests/GatewayProtocolGeneratedModelsTests.swift",
       ],
       // The testing reference is an index over docs/reference/test/*; point at
       // the page that owns the commands this proof runs, not the index.
@@ -498,11 +378,6 @@ async function runGatewayProtocolArtifactsProducer(
       artifactBase: options.artifactBase,
       repoRoot: options.repoRoot,
     });
-    await compileAndRunSwiftProtocolModels({
-      appendLog: (line) => writer.appendLog(line),
-      artifactBase: options.artifactBase,
-      repoRoot: options.repoRoot,
-    });
     const summaryPath = path.join(options.artifactBase, "protocol-artifact-summary.json");
     await fs.writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
     return await writer.write({
@@ -517,8 +392,6 @@ async function runGatewayProtocolArtifactsProducer(
         `consumer-install=${summary.consumer.installed ? "pass" : "fail"}`,
         `definitions=${summary.definitions.join(",")}`,
         "protocol-check=pass",
-        "swift-generated-model-compile=pass",
-        "swift-generated-model-decode=pass",
       ].join("; "),
       durationMs: Math.max(1, Date.now() - startedAt),
       status: "pass",

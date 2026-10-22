@@ -385,7 +385,7 @@ describe("security-fast workflow", () => {
               "--min-severity=medium",
               "--min-confidence=medium",
             ],
-            exclude: "^(vendor/|apps/swabble/)",
+            exclude: "^vendor/",
           },
         ],
       },

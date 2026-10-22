@@ -11,7 +11,12 @@ import { resolveTsxImport } from "./tsx-cli-shim.mjs";
 import { resolveWorkerDeployGeneratorInputs } from "./worker-deploy-build-plugin.mts";
 
 const sourceFilePattern = /\.(?:[cm]?[jt]sx?)$/u;
-const builtins = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
+const builtins = new Set([
+  ...builtinModules,
+  ...builtinModules.map((name) => `node:${name}`),
+  // Node 22 ships node:sqlite behind an experimental API but omits it from builtinModules.
+  "node:sqlite",
+]);
 const portablePath = (root: string, file: string) => {
   const relative = path.relative(root, file);
   return relative === "" || (!relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))

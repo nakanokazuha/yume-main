@@ -149,9 +149,6 @@ jobs:
       npm_decisions: ${{ steps.full_manifest.outputs.npm_decisions }}
       coverage_policy: ${{ steps.full_manifest.outputs.coverage_policy }}
       release_profile: ${{ steps.full_manifest.outputs.release_profile }}
-      android_pin_version: ${{ steps.ref.outputs.android_pin_version }}
-      android_pin_matches: ${{ steps.ref.outputs.android_pin_matches }}
-      android_release_note: ${{ steps.ref.outputs.android_release_note }}
     steps:
       - name: Validate inputs
         id: inputs
@@ -377,7 +374,6 @@ jobs:
           filter: blob:none
           sparse-checkout: |
             package.json
-            apps/android/version.json
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -393,7 +389,6 @@ jobs:
           RELEASE_NPM_DIST_TAG: ${{ inputs.npm_dist_tag }}
         run: |
           set -euo pipefail
-          release_version="${RELEASE_TAG#v}"
           checked_out_sha="$(git rev-parse HEAD)"
           if [[ "$checked_out_sha" != "$EXPECTED_SIGNED_TAG_SHA" ]]; then
             echo "Release tag ${RELEASE_TAG} changed after its signature was verified: expected ${EXPECTED_SIGNED_TAG_SHA}, found ${checked_out_sha}." >&2
@@ -407,26 +402,8 @@ jobs:
             echo "Release tag ${RELEASE_TAG} changed after its signature was verified: expected tag object ${EXPECTED_SIGNED_TAG_OBJECT_SHA}, found ${current_tag_object:-<non-annotated>}." >&2
             exit 1
           fi
-          # The pin comes from the release checkout and is echoed into GITHUB_OUTPUT;
-          # only an exact YYYY.M.PATCH string may pass so it cannot inject output records.
-          android_pin_version="$(jq -r '.version // empty' apps/android/version.json)"
-          if [[ ! "${android_pin_version}" =~ ^[0-9]{4}\.([1-9]|1[0-2])\.[0-9]{1,3}$ ]]; then
-            echo "apps/android/version.json must pin an exact YYYY.M.PATCH Android version, got: ${android_pin_version@Q}" >&2
-            exit 1
-          fi
-          android_pin_matches=false
-          android_release_note=""
-          if [[ "${android_pin_version}" == "${release_version%%-*}" ]]; then
-            android_pin_matches=true
-          elif [[ "${RELEASE_NPM_DIST_TAG}" != "extended-stable" && "${PUBLISH_OPENCLAW_NPM}" == "true" && "${PUBLISH_DOCKER_ONLY}" != "true" && "${RELEASE_TAG}" != *"-beta."* ]]; then
-            android_release_note="- Android APK: skipped — apps/android/version.json is ${android_pin_version}, release train is ${release_version%%-*}; run pnpm android:version:pin -- --from-gateway before the next tag."
-            echo "${android_release_note}" >> "$GITHUB_STEP_SUMMARY"
-          fi
           {
             echo "sha=${checked_out_sha}"
-            echo "android_pin_version=${android_pin_version}"
-            echo "android_pin_matches=${android_pin_matches}"
-            echo "android_release_note=${android_release_note}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Fetch exact release and trusted tooling ancestry
@@ -1056,212 +1033,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  qualify_android_native:
-    name: Qualify native Android release source
-    needs: [resolve_release_target]
-    if: ${{ !inputs.publish_docker_only && inputs.publish_openclaw_npm && inputs.npm_dist_tag != 'extended-stable' && !contains(inputs.tag, '-beta.') && needs.resolve_release_target.outputs.android_pin_matches == 'true' && needs.resolve_release_target.outputs.coverage_policy == 'npm-stable-v1' }}
-    # Native failure blocks its approval receipt, while core publication proceeds.
-    continue-on-error: true
-    permissions:
-      actions: write
-      contents: read
-    runs-on: ${{ vars.OPENCLAW_RELEASE_RUNNER_GROUP != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON(vars.OPENCLAW_RELEASE_RUNNER_GROUP), toJSON('ubuntu-latest'))) || ('ubuntu-latest') }}
-    timeout-minutes: 360
-    outputs:
-      qualified: ${{ steps.proof.outputs.qualified }}
-      run_id: ${{ steps.dispatch.outputs.run_id }}
-      workflow_ref: ${{ steps.dispatch.outputs.workflow_ref }}
-    steps:
-      - name: Checkout trusted native qualification tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: .release-harness
-          sparse-checkout: scripts
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Verify Android approval consumer capability
-        working-directory: .release-harness
-        env:
-          EXPECTED_SHA: ${{ needs.resolve_release_target.outputs.sha }}
-        run: |
-          set -euo pipefail
-          # Frozen tags execute their own Android approval consumer. This gate
-          # belongs to native qualification and must never block npm publication.
-          git fetch --no-tags --depth=1 origin "${EXPECTED_SHA}"
-          if ! git cat-file -e "${EXPECTED_SHA}:scripts/android-native-ci.mjs"; then
-            echo "The frozen Android publisher cannot consume native-CI-bound approval. Use a compatible Android publication workflow for this source." >&2
-            exit 1
-          fi
-
-      - name: Dispatch and await exact-source native CI
-        id: dispatch
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WORKFLOW_FULL_REF: ${{ github.ref }}
-          PARENT_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          TARGET_SHA: ${{ needs.resolve_release_target.outputs.sha }}
-        run: |
-          set -euo pipefail
-          source "${GITHUB_WORKSPACE}/.release-harness/scripts/lib/release-publish-children.sh"
-          CHILD_WORKFLOW_REF="$(resolve_child_workflow_ref "${WORKFLOW_FULL_REF}")"
-          dispatch_id="release-native-android-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${TARGET_SHA}"
-          run_id="$(dispatch_workflow ci.yml \
-            -f target_ref="${TARGET_SHA}" \
-            -f historical_target_tag="${RELEASE_TAG}" \
-            -f include_android=true \
-            -f release_scope=full \
-            -f dispatch_id="${dispatch_id}")"
-          echo "run_id=${run_id}" >> "${GITHUB_OUTPUT}"
-          echo "workflow_ref=${CHILD_WORKFLOW_REF}" >> "${GITHUB_OUTPUT}"
-          wait_for_run ci.yml "${run_id}" "${PARENT_WORKFLOW_SHA}" "" false
-
-      - name: Setup supported Node runtime
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-
-      - name: Verify exact native CI qualification
-        id: proof
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NATIVE_CI_RUN_ID: ${{ steps.dispatch.outputs.run_id }}
-          NATIVE_CI_WORKFLOW_REF: ${{ steps.dispatch.outputs.workflow_ref }}
-          NATIVE_CI_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          TARGET_SHA: ${{ needs.resolve_release_target.outputs.sha }}
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { verifyAndroidNativeCi } from './.release-harness/scripts/android-native-ci.mjs';
-          const env = process.env;
-          verifyAndroidNativeCi({
-            version: 3, repository: env.GITHUB_REPOSITORY,
-            parentRunId: env.GITHUB_RUN_ID, parentRunAttempt: Number(env.GITHUB_RUN_ATTEMPT),
-            parentWorkflowSha: env.NATIVE_CI_WORKFLOW_SHA, targetSha: env.TARGET_SHA,
-            nativeCi: { runId: env.NATIVE_CI_RUN_ID, runAttempt: 1, workflowRef: env.NATIVE_CI_WORKFLOW_REF },
-          });
-          NODE
-          echo "qualified=true" >> "${GITHUB_OUTPUT}"
-
-      - name: Record blocked native qualification
-        if: ${{ failure() }}
-        run: |
-          echo "::warning::Android native qualification failed; no Android approval will be issued. Core publication remains independent."
-          echo "- Android APK: blocked by native qualification; inspect this job and its linked CI run." >> "${GITHUB_STEP_SUMMARY}"
-
-  publish_android:
-    name: Approve and dispatch qualified Android
-    needs: [resolve_release_target, publish, qualify_android_native]
-    if: ${{ always() && !cancelled() && !inputs.publish_docker_only && inputs.publish_openclaw_npm && inputs.npm_dist_tag != 'extended-stable' && !contains(inputs.tag, '-beta.') && needs.resolve_release_target.outputs.android_pin_matches == 'true' && needs.resolve_release_target.result == 'success' && needs.publish.result == 'success' && (needs.resolve_release_target.outputs.coverage_policy != 'npm-stable-v1' || needs.qualify_android_native.outputs.qualified == 'true') }}
-    continue-on-error: true
-    permissions:
-      actions: write
-      attestations: write
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout trusted Android approval tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: .release-harness
-          sparse-checkout: scripts
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Setup supported Node runtime
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-
-      - name: Write Android release approval
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_COVERAGE_POLICY: ${{ needs.resolve_release_target.outputs.coverage_policy }}
-          NATIVE_CI_RUN_ID: ${{ needs.qualify_android_native.outputs.run_id }}
-          NATIVE_CI_WORKFLOW_REF: ${{ needs.qualify_android_native.outputs.workflow_ref }}
-          RELEASE_PUBLISH_BRANCH: ${{ github.ref_name }}
-          RELEASE_PUBLISH_FULL_REF: ${{ github.ref }}
-          RELEASE_PUBLISH_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          RELEASE_PUBLISH_RUN_ATTEMPT: ${{ github.run_attempt }}
-          RELEASE_PUBLISH_RUN_ID: ${{ github.run_id }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          TARGET_SHA: ${{ needs.resolve_release_target.outputs.sha }}
-        run: |
-          set -euo pipefail
-          approval_dir="${RUNNER_TEMP}/android-release-approval"
-          mkdir -p "${approval_dir}"
-          node --input-type=module <<'NODE'
-          import { writeFileSync } from "node:fs";
-          import { join } from "node:path";
-          import { verifyAndroidNativeCi } from './.release-harness/scripts/android-native-ci.mjs';
-
-          const nativeCi = process.env.RELEASE_COVERAGE_POLICY === "npm-stable-v1"
-            ? { runId: process.env.NATIVE_CI_RUN_ID, runAttempt: 1, workflowRef: process.env.NATIVE_CI_WORKFLOW_REF }
-            : undefined;
-          const approval = {
-            version: nativeCi ? 3 : 2,
-            repository: process.env.GITHUB_REPOSITORY,
-            workflow: "OpenClaw Release Publish",
-            parentRunId: process.env.RELEASE_PUBLISH_RUN_ID,
-            parentRunAttempt: Number(process.env.RELEASE_PUBLISH_RUN_ATTEMPT),
-            workflowBranch: process.env.RELEASE_PUBLISH_BRANCH,
-            workflowFullRef: process.env.RELEASE_PUBLISH_FULL_REF,
-            parentWorkflowSha: process.env.RELEASE_PUBLISH_WORKFLOW_SHA,
-            releaseTag: process.env.RELEASE_TAG,
-            targetSha: process.env.TARGET_SHA,
-            ...(nativeCi ? { nativeCi } : {}),
-          };
-          // Core publication may outlive the earlier native qualification.
-          verifyAndroidNativeCi(approval);
-          writeFileSync(
-            join(process.env.RUNNER_TEMP, "android-release-approval", "approval.json"),
-            `${JSON.stringify(approval, null, 2)}\n`,
-          );
-          NODE
-
-      - name: Attest Android release approval
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: ${{ runner.temp }}/android-release-approval/approval.json
-
-      - name: Upload Android release approval
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: android-release-approval-${{ github.run_id }}
-          path: ${{ runner.temp }}/android-release-approval/approval.json
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Dispatch qualified Android publication
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PARENT_WORKFLOW_BRANCH: ${{ github.ref_name }}
-          PARENT_WORKFLOW_FULL_REF: ${{ github.ref }}
-          PARENT_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          RELEASE_NPM_DIST_TAG: ${{ inputs.npm_dist_tag }}
-          SIGNED_RELEASE_TAG_OBJECT_SHA: ${{ needs.resolve_release_target.outputs.signed_tag_object_sha }}
-          TARGET_SHA: ${{ needs.resolve_release_target.outputs.sha }}
-        working-directory: .release-harness
-        run: |
-          set -euo pipefail
-          source scripts/lib/release-publish-children.sh
-          verify_release_tag_target
-          promote_android_release_asset
-
-      - name: Record blocked native publication
-        if: ${{ failure() }}
-        run: |
-          echo "::warning::Android approval or dispatch failed; inspect the native publication job. Core publication remains independent."
-          echo "- Android APK: approval or dispatch failed; inspect Android APK Artifact Publish runs before retrying." >> "${GITHUB_STEP_SUMMARY}"
-
   publish:
     name: Publish plugins, then OpenClaw
     needs: [resolve_release_target]
@@ -1275,7 +1046,6 @@ jobs:
     env:
       # Artifact bytes may belong to an FRV child; the input run still authorizes npm dispatch.
       PREFLIGHT_ARTIFACT_RUN_ID: ${{ needs.resolve_release_target.outputs.preflight_artifact_run_id }}
-      ANDROID_RELEASE_NOTE: ${{ needs.resolve_release_target.outputs.android_release_note }}
       TARGET_SHA: ${{ needs.resolve_release_target.outputs.sha }}
       SIGNED_RELEASE_TAG_OBJECT_SHA: ${{ needs.resolve_release_target.outputs.signed_tag_object_sha }}
       PARENT_WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -1696,9 +1466,6 @@ jobs:
             else
               echo "- OpenClaw npm publish: skipped by input"
             fi
-            if is_android_release && [[ "${PUBLISH_OPENCLAW_NPM}" == "true" ]]; then
-              echo "${ANDROID_RELEASE_NOTE:-- Android APK: a separate native job qualifies the source before approval and dispatch; core publication does not wait for native qualification}"
-            fi
             if is_stable_release && [[ "${PUBLISH_OPENCLAW_NPM}" == "true" ]]; then
               echo "- Windows Hub promotion: optional detached child after GitHub publication"
             fi
@@ -2086,11 +1853,6 @@ jobs:
             openclaw_pid="${wait_run_pid}"
           fi
 
-          # Native qualification and APK dispatch belong to separate jobs.
-          android_release_note="${ANDROID_RELEASE_NOTE:-}"
-          if is_android_release && [[ -z "${android_release_note}" ]]; then
-            android_release_note="- Android APK: monitor the native qualification and publication jobs at https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          fi
           openclaw_failed=0
           if [[ -n "${openclaw_pid}" ]] && { ! wait "${openclaw_pid}" || [[ ! -f "${openclaw_result}" || "$(cat "${openclaw_result}")" != "success" ]]; }; then
             failed=1
@@ -2591,7 +2353,7 @@ jobs:
   cleanup_clawhub:
     name: Preserve ClawHub recovery evidence before cleanup
     needs:
-      [publish, publish_android, publish_vcr, dispatch_linux_mirror, publish_linux, publish_windows]
+      [publish, publish_vcr, dispatch_linux_mirror, publish_linux, publish_windows]
     if: ${{ failure() || cancelled() }}
     runs-on: ${{ vars.OPENCLAW_RELEASE_RUNNER_GROUP != '' && fromJSON(format('{{"group":{0},"labels":{1}}}', toJSON(vars.OPENCLAW_RELEASE_RUNNER_GROUP), toJSON('ubuntu-latest'))) || ('ubuntu-latest') }}
     timeout-minutes: 5

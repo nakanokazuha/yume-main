@@ -87,10 +87,6 @@ categories:
       - "packages/{acp-core,ai,gateway-protocol,memory-host-sdk,net-policy,plugin-sdk}/src/**/*credential*.ts"
       - "packages/{acp-core,ai,gateway-protocol,memory-host-sdk,net-policy,plugin-sdk}/src/**/*secret*.ts"
       - "packages/{acp-core,ai,gateway-protocol,memory-host-sdk,net-policy,plugin-sdk}/src/**/*redact*.ts"
-      - "apps/{ios,shared/OpenClawKit}/Sources/**/*KeychainStore.swift"
-      - "apps/{ios,shared/OpenClawKit}/Sources/**/*DeviceAuthStore.swift"
-      - "apps/android/app/src/main/java/ai/openclaw/app/SecurePrefs.kt"
-      - "apps/android/app/src/main/java/ai/openclaw/app/gateway/DeviceAuthStore.kt"
 
   execution:
     description: Controls sandbox containment or tool execution authority.

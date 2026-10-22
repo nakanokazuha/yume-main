@@ -1475,7 +1475,6 @@ function expectMacosPackageCommand(
   expect(output.args).toContain("--shell");
   expect(remoteCommand).toContain("openclaw_crabbox_bootstrap_macos_js");
   expect(remoteCommand).toContain("pnpm --version >&2");
-  expect(remoteCommand).toContain("openclaw_crabbox_require_macos_swift_63");
   beforeGrouped?.(remoteCommand);
   expectGroupedShellCommand(remoteCommand, command);
 }
@@ -3070,52 +3069,6 @@ esac
       grouped: "node --version",
     },
     {
-      name: "preflights Swift 6.3 for raw AWS macOS Swift app builds",
-      input: ["swift", "build", "--package-path", "apps/macos", "--product", "OpenClaw"],
-      includes: [
-        "openclaw_crabbox_require_macos_swift_63",
-        "/Applications/Xcode_26*.app",
-        "/Applications/Xcode-26*.app",
-        "/Applications/Xcode_2[7-9]*.app",
-        'sudo xcode-select -s "$openclaw_developer"',
-        "OpenClaw macOS app proof requires Swift tools 6.3+",
-        "xcodebuild -version",
-        "OpenClaw macOS app proof requires Xcode 26.4+",
-      ],
-      excludes: ["openclaw_crabbox_bootstrap_macos_js"],
-      argsIncludes: ["--shell"],
-      grouped: "swift build --package-path apps/macos --product OpenClaw",
-    },
-    {
-      name: "preserves sanitized env pnpm package commands when Swift preflight is needed",
-      input: ["env", "-i", "pnpm", "mac:package"],
-      includes: ["openclaw_crabbox_bootstrap_macos_js", "openclaw_crabbox_require_macos_swift_63"],
-      argsIncludes: ["--shell"],
-      grouped: "openclaw_crabbox_env -i pnpm mac:package",
-    },
-    {
-      name: "does not bootstrap JS tooling for env package scripts behind command",
-      input: ["command", "env", "-i", "PATH=/usr/bin:/bin", "bash", "scripts/package-mac-app.sh"],
-      excludes: ["openclaw_crabbox_bootstrap_macos_js"],
-    },
-    {
-      name: "does not preflight Swift for raw AWS macOS commands that only mention package scripts",
-      input: ["echo", "scripts/package-mac-app.sh"],
-      excludes: ["openclaw_crabbox_require_macos_swift_63"],
-      expectedArgs: [
-        "run",
-        "--provider",
-        "aws",
-        "--target",
-        "macos",
-        "--market",
-        "on-demand",
-        "--",
-        "echo",
-        "scripts/package-mac-app.sh",
-      ],
-    },
-    {
       name: "bootstraps Bun for raw AWS macOS bun commands",
       input: ["bun", "--version"],
       includes: [
@@ -3352,52 +3305,34 @@ esac
     expect(output.args).toEqual(["run", "--provider", "aws", ...options, "--", "echo ok"]);
   });
 
-  it("does not bootstrap JS tooling for nested env package scripts that cannot be shimmed", () => {
-    for (const args of [
-      ["--", "bash", "-lc", "env -i PATH=/usr/bin:/bin bash scripts/package-mac-app.sh"],
-      ["--shell", "--", "bash -lc 'env -i PATH=/usr/bin:/bin bash scripts/package-mac-app.sh'"],
-    ]) {
-      const { remoteCommand } = runSuccessfulDefaultWrapper([
-        "run",
-        "--provider",
-        "aws",
-        "--target",
-        "macos",
-        ...args,
-      ]);
-      expect(remoteCommand).not.toContain("openclaw_crabbox_bootstrap_macos_js");
-      expect(remoteCommand).toContain("openclaw_crabbox_require_macos_swift_63");
-    }
-  });
-
   it.each([
     [
-      "env -i bash scripts/package-mac-app.sh >out.log 2>&1",
-      "openclaw_crabbox_env -i bash scripts/package-mac-app.sh >out.log 2>&1",
+      "env -i pnpm --version >out.log 2>&1",
+      "openclaw_crabbox_env -i pnpm --version >out.log 2>&1",
     ],
     [
-      "env -i bash scripts/package-mac-app.sh && echo done",
-      "openclaw_crabbox_env -i bash scripts/package-mac-app.sh && echo done",
+      "env -i pnpm --version && echo done",
+      "openclaw_crabbox_env -i pnpm --version && echo done",
     ],
     [
-      "set -e; env -i bash scripts/package-mac-app.sh",
-      "set -e; openclaw_crabbox_env -i bash scripts/package-mac-app.sh",
+      "set -e; env -i pnpm --version",
+      "set -e; openclaw_crabbox_env -i pnpm --version",
     ],
     [
-      "time env -i bash scripts/package-mac-app.sh",
-      "time openclaw_crabbox_env -i bash scripts/package-mac-app.sh",
+      "time env -i pnpm --version",
+      "time openclaw_crabbox_env -i pnpm --version",
     ],
     [
-      "(env -i bash scripts/package-mac-app.sh)",
-      "(openclaw_crabbox_env -i bash scripts/package-mac-app.sh)",
+      "(env -i pnpm --version)",
+      "(openclaw_crabbox_env -i pnpm --version)",
     ],
     [
-      "if true; then env -i bash scripts/package-mac-app.sh; fi",
-      "if true; then openclaw_crabbox_env -i bash scripts/package-mac-app.sh; fi",
+      "if true; then env -i pnpm --version; fi",
+      "if true; then openclaw_crabbox_env -i pnpm --version; fi",
     ],
     [
-      "FOO='a b' env -i bash scripts/package-mac-app.sh",
-      "FOO='a b' openclaw_crabbox_env -i bash scripts/package-mac-app.sh",
+      "FOO='a b' env -i pnpm --version",
+      "FOO='a b' openclaw_crabbox_env -i pnpm --version",
     ],
   ])("preserves package-script shell syntax when rewriting %s", (command, expected) => {
     expectMacosPackageCommand(runSuccessfulMacosShell(command), expected, (remoteCommand) => {
@@ -3406,45 +3341,22 @@ esac
     });
   });
 
-  it("does not rewrite heredoc bodies when sanitizing env package scripts", () => {
+  it("does not rewrite heredoc bodies when sanitizing env package commands", () => {
     const shellCommand = [
-      "env -i bash scripts/package-mac-app.sh",
+      "env -i pnpm --version",
       "cat <<EOF",
-      "env -i bash scripts/package-mac-app.sh",
+      "env -i pnpm --version",
       "EOF",
     ].join("\n");
     const expectedCommand = [
-      "openclaw_crabbox_env -i bash scripts/package-mac-app.sh",
+      "openclaw_crabbox_env -i pnpm --version",
       "cat <<EOF",
-      "env -i bash scripts/package-mac-app.sh",
+      "env -i pnpm --version",
       "EOF",
     ].join("\n");
     const run = runSuccessfulMacosShell(shellCommand);
     expectMacosPackageCommand(run, expectedCommand);
     expect(run.remoteCommand).not.toContain("cat <<EOF\nopenclaw_crabbox_env");
-  });
-
-  it.each([
-    {
-      name: "preflights Swift and JS tooling for raw AWS macOS shell-launched package scripts",
-      script: "scripts/package-mac-app.sh",
-    },
-    {
-      js: false,
-      name: "keeps raw AWS macOS build-and-run scripts Swift-only",
-      script: "scripts/build-and-run-mac.sh",
-    },
-  ])("$name", ({ js = true, script }) => {
-    const { output, remoteCommand } = runSuccessfulMacosCommand(["bash", script]);
-    expect(output.args).toContain("--shell");
-    expect(remoteCommand).toContain("openclaw_crabbox_require_macos_swift_63");
-    if (js) {
-      expect(remoteCommand).toContain("openclaw_crabbox_bootstrap_macos_js");
-      expect(remoteCommand).toContain("pnpm --version >&2");
-    } else {
-      expect(remoteCommand).not.toContain("openclaw_crabbox_bootstrap_macos_js");
-    }
-    expectGroupedShellCommand(remoteCommand, `bash ${script}`);
   });
 
   it.each([
@@ -3659,20 +3571,6 @@ esac
         "pnpm --version >&2",
         "bun --version >&2 || return 1",
         `\n${["#!/usr/bin/env bash", "set -euo pipefail", "pnpm --version", "bun --version"].join("\n")}\n`,
-      ],
-    },
-    {
-      name: "preflights Swift for AWS macOS script-stdin Swift builds",
-      input: ["set -euo pipefail", "swift build --package-path apps/macos --product OpenClaw"].join(
-        "\n",
-      ),
-      includes: [
-        "openclaw_crabbox_bootstrap_macos_js",
-        "openclaw_crabbox_require_macos_swift_63",
-        "openclaw_crabbox_require_macos_swift_63 || exit $?",
-        "OpenClaw macOS app proof requires Swift tools 6.3+",
-        "OpenClaw macOS app proof requires Xcode 26.4+",
-        `\n${["set -euo pipefail", "swift build --package-path apps/macos --product OpenClaw"].join("\n")}`,
       ],
     },
     {

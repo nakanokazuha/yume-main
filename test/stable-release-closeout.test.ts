@@ -18,8 +18,6 @@ const release = {
   ],
 };
 const remainingAppAssets = [
-  "OpenClaw-Android-SHA256SUMS.txt",
-  "OpenClaw-Android.apk",
   "OpenClawCompanion-SHA256SUMS.txt",
   "OpenClawCompanion-Setup-arm64.exe",
   "OpenClawCompanion-Setup-x64.exe",
@@ -113,7 +111,7 @@ function shippedReplayFixture(version: string, mainVersion: string, complete: bo
       ? { appcastSha256: sha256(mainAppcast) }
       : {
           apps: "pending",
-          appPlatforms: { macos: "attached", android: "pending", windows: "pending" },
+          appPlatforms: { macos: "attached", windows: "pending" },
           appcast: "verified",
           appcastSha256: sha256(mainAppcast),
         }),
@@ -449,7 +447,7 @@ describe("stable release closeout", () => {
       expect(lookups).toEqual([version]);
       expect(result.manifest).toMatchObject({
         apps: "pending",
-        appPlatforms: { macos: "withdrawn", android: "pending", windows: "pending" },
+        appPlatforms: { macos: "withdrawn", windows: "pending" },
         appcast: "withdrawn",
         appcastWithdrawal: withdrawal,
       });
@@ -529,7 +527,6 @@ describe("stable release closeout", () => {
 
   it.each([
     ["OpenClaw-2026.6.8.zip", null, "macos", "pending"],
-    ["OpenClaw-Android.apk", `sha256:${"D".repeat(64)}`, "android", "verified"],
     ["OpenClawCompanion-Setup-x64.exe", `sha256:${"d".repeat(63)}`, "windows", "verified"],
     ["OpenClawCompanion-SHA256SUMS.txt", `sha256:${"d".repeat(64)}\n`, "windows", "verified"],
   ])("keeps noncanonical %s evidence pending", (assetName, digest, platform, appcast) => {
@@ -556,7 +553,7 @@ describe("stable release closeout", () => {
       release: { ...release, assets },
     });
     const invalidAssets = assets.map((asset) =>
-      asset.name === "OpenClaw-Android.apk"
+      asset.name === "OpenClaw-2026.6.8.zip"
         ? { name: asset.name, digest: asset.digest.toUpperCase() }
         : asset,
     );

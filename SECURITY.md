@@ -16,11 +16,9 @@ Anyone who can operate an agent can make it do anything that agent can do. Sessi
 
 Report vulnerabilities directly to the repository where the issue lives:
 
-- **Core CLI and gateway** — [openclaw/openclaw](https://github.com/openclaw/openclaw)
-- **macOS desktop app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/macos)
-- **iOS app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/ios)
-- **Android app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/android)
-- **ClawHub** — [openclaw/clawhub](https://github.com/openclaw/clawhub)
+- **Yume core and gateway** — [nakanokazuha/yume-main](https://github.com/nakanokazuha/yume-main)
+- **Upstream OpenClaw issues** — [openclaw/openclaw](https://github.com/openclaw/openclaw)
+- **ClawHub issues** — [openclaw/clawhub](https://github.com/openclaw/clawhub)
 
 For issues that don't fit a specific repo, or if you're unsure, email **[security@openclaw.ai](mailto:security@openclaw.ai)** and we'll route it.
 

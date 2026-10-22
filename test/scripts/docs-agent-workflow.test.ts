@@ -519,7 +519,6 @@ describe("Docs Agent full-CI admission", () => {
       runAttempt: 1,
       sha: mainSha,
       preflightOutputs: { checkout_revision: mainSha, validation_tier: "full" },
-      includeAndroid: true,
     };
     expect(evaluate(producer.if, context)).toBe(true);
     for (const change of [
@@ -527,7 +526,6 @@ describe("Docs Agent full-CI admission", () => {
       { targetRef: previousSha },
       { releaseGate: true },
       { releaseScope: "npm-beta" },
-      { includeAndroid: false },
       { preflightOutputs: { checkout_revision: previousSha, validation_tier: "full" } },
       { preflightOutputs: { checkout_revision: mainSha, validation_tier: "main" } },
     ]) {

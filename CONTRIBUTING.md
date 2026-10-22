@@ -262,10 +262,7 @@ Please allow a few weeks for a response.
 
 We take security reports seriously. Report vulnerabilities directly to the repository where the issue lives:
 
-- **Core CLI and gateway** — [openclaw/openclaw](https://github.com/openclaw/openclaw)
-- **macOS desktop app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/macos)
-- **iOS app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/ios)
-- **Android app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/android)
+- **Yume core, desktop client, and PWA** — [nakanokazuha/yume-main](https://github.com/nakanokazuha/yume-main)
 - **ClawHub** — [openclaw/clawhub](https://github.com/openclaw/clawhub)
 
 For issues that don't fit a specific repo, or if you're unsure, email **security@openclaw.ai** and we'll route it.

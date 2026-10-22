@@ -13,8 +13,6 @@ const globMatchers = new Map<string, Minimatch>();
 export const sharedVitestExcludePatterns: readonly string[] = Object.freeze([
   "dist/**",
   "test/fixtures/**",
-  "apps/macos/**",
-  "apps/macos/.build/**",
   "**/node_modules/**",
   "**/vendor/**",
   "dist/OpenClaw.app/**",

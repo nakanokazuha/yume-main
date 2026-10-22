@@ -720,7 +720,7 @@ async function command() {
     if (
       linux &&
       directory !== path.join(workspace, ".ci-harness") &&
-      ["linux-node", "clawhub", "android"].includes(kind)
+      ["linux-node", "clawhub"].includes(kind)
     ) {
       if (fs.readdirSync(directory).length !== 0) {
         throw new Error("Previous checkout survived workspace deletion");
@@ -1054,11 +1054,6 @@ async function command() {
       const action = path.join(cwd, ".github/actions/setup-node-env");
       fs.mkdirSync(action, { recursive: true });
       fs.writeFileSync(path.join(action, "action.yml"), "fixture\n");
-    }
-    if (options.env?.CHECKOUT_KIND === "android") {
-      const gradlew = path.join(cwd, "apps/android/gradlew");
-      fs.mkdirSync(path.dirname(gradlew), { recursive: true });
-      fs.writeFileSync(gradlew, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     }
   } else if (
     operation === "diff" &&

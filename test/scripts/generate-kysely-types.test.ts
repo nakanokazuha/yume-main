@@ -44,7 +44,6 @@ describe("Kysely declarations", () => {
     for (const file of [
       "package.json",
       "scripts/prepare-git-hooks.mjs",
-      "scripts/prepare-native-protocol.mjs",
       "scripts/runtime-postbuild-shared.mjs",
       "scripts/generate-kysely-types.mts",
       "scripts/lib/direct-run.mjs",
@@ -106,7 +105,6 @@ describe("Kysely declarations", () => {
     for (const file of [
       "scripts/generate-kysely-types.mts",
       "scripts/prepare-git-hooks.mjs",
-      "scripts/prepare-native-protocol.mjs",
     ]) {
       const result = run(file);
       expect(result.status, result.stderr).toBe(0);

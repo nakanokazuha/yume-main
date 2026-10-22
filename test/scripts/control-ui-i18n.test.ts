@@ -1,12 +1,10 @@
 // Control Ui I18N tests cover control ui i18n script behavior.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
-import type { AssistantMessage } from "@openclaw/ai";
 import { execa } from "execa";
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import {
   assertControlUiGeneratedArtifactsIsolated,
   resolveAllowedGeneratedMixBranch,
@@ -23,319 +21,22 @@ import {
   buildBatchPrompt,
   filterPlaceholderCompatibleTranslations,
   parseTranslationBatchReply,
-  translateNativeEntries,
 } from "../../scripts/control-ui-i18n.ts";
 import { loadControlUiSourceCatalog } from "../../scripts/lib/control-ui-i18n-catalog.ts";
 import { collectControlUiRawCopyFromSource } from "../../scripts/lib/control-ui-i18n-raw-copy.ts";
 import { flattenTranslations } from "../../scripts/lib/control-ui-i18n-sync-plan.ts";
 import { createNativeTypeScriptParser } from "../../scripts/lib/native-typescript.mts";
-import { makeAgentAssistantMessage } from "../../src/agents/test-helpers/agent-message-fixtures.js";
-import { createZeroUsageFixture } from "../../src/agents/test-helpers/usage-fixtures.js";
 import { resolveTestNodeExecPath } from "../../src/test-utils/node-process.js";
 import { configHintTranslationKey } from "../../ui/src/i18n/lib/config-hint-translation.ts";
 import { registerCodeBlocksEnglish } from "../../ui/src/i18n/locales/en-code-blocks.ts";
 import { registerLabsEnglish } from "../../ui/src/i18n/locales/en-labs.ts";
 import { registerSettingsEnglish } from "../../ui/src/i18n/locales/en-settings.ts";
 import { registerTranscriptsEnglish } from "../../ui/src/i18n/locales/en-transcripts.ts";
-import { createTempDirTracker } from "../helpers/temp-dir.js";
 
 vi.mock("../../scripts/lib/sleep.mjs", () => ({ sleep: async () => {} }));
 const testNodeExecPath = resolveTestNodeExecPath();
 const parser = createNativeTypeScriptParser();
 afterAll(() => parser.close());
-const llm = vi.hoisted(() => ({ completeSimple: vi.fn() }));
-vi.mock("@openclaw/ai", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@openclaw/ai")>();
-  return {
-    ...actual,
-    createLlmRuntime: () => ({ ...actual.createLlmRuntime(), completeSimple: llm.completeSimple }),
-  };
-});
-
-describe("translation provider privacy and fallback", () => {
-  const primary = "private-primary-fixture";
-  const fallback = "private-fallback-fixture";
-  const entries = Array.from({ length: 21 }, (_, index) => ({
-    id: `label${index}`,
-    source: "Open",
-    sourcePath: "fixture.ts",
-  }));
-  const response = (overrides: Partial<AssistantMessage> = {}): AssistantMessage =>
-    makeAgentAssistantMessage({
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(Object.fromEntries(entries.map((entry) => [entry.id, "Ouvrir"]))),
-        },
-      ],
-      model: primary,
-      usage: createZeroUsageFixture(),
-      ...overrides,
-    });
-  beforeEach(() => {
-    llm.completeSimple.mockReset();
-    vi.stubEnv("OPENAI_API_KEY", "test-key");
-    vi.stubEnv("OPENCLAW_CONTROL_UI_I18N_PROVIDER", "openai");
-    vi.stubEnv("OPENCLAW_CONTROL_UI_I18N_MODEL", primary);
-    vi.stubEnv("OPENCLAW_I18N_FALLBACK_MODEL", fallback);
-    vi.spyOn(process.stdout, "write").mockReturnValue(true);
-  });
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllEnvs();
-  });
-
-  it("reports CLI failures without disclosing configured model or key values", async () => {
-    const result = await execa(
-      process.execPath,
-      [
-        "--import",
-        "./scripts/tsx.mjs",
-        "scripts/control-ui-i18n.ts",
-        "sync",
-        "--locale",
-        `${primary.toUpperCase()}/${fallback}/test-key`,
-      ],
-      { reject: false, timeout: 120_000, stripFinalNewline: false },
-    );
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.trim()).toBe("unknown locale: [redacted]/[redacted]/[redacted]");
-  });
-
-  it.each([
-    { args: ["sync", "--refresh-key"], error: "requires a catalog key" },
-    {
-      args: ["sync", "--locale", "pl", "--refresh-key", "chat.parentSession"],
-      error: "requires sync --write --locale",
-    },
-    {
-      args: ["sync", "--write", "--refresh-key", "chat.parentSession"],
-      error: "requires sync --write --locale",
-    },
-    {
-      args: ["check", "--locale", "pl", "--refresh-key", "chat.parentSession"],
-      error: "requires sync --write --locale",
-    },
-    {
-      args: ["sync", "--write", "--locale", "pl", "--force", "--refresh-key", "chat.parentSession"],
-      error: "cannot be combined with --force",
-    },
-    {
-      args: [
-        "sync",
-        "--write",
-        "--locale",
-        "pl",
-        ...Array.from({ length: 65 }, (_, i) => ["--refresh-key", `key${i}`]).flat(),
-      ],
-      error: "at most 64 distinct keys",
-    },
-    {
-      args: ["sync", "--write", "--locale", "pl", "--refresh-key", "missing.fixture.key"],
-      error: "unknown refresh key: missing.fixture.key",
-    },
-  ])("rejects invalid targeted refresh: $error", async ({ args, error }) => {
-    const result = await execa(
-      process.execPath,
-      ["--import", "./scripts/tsx.mjs", "scripts/control-ui-i18n.ts", ...args],
-      { reject: false, timeout: 120_000, stripFinalNewline: false },
-    );
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain(error);
-  });
-
-  it("requires provider authentication for targeted refresh even when auth is optional", async () => {
-    vi.stubEnv("OPENAI_API_KEY", "");
-    vi.stubEnv("ANTHROPIC_API_KEY", "");
-    vi.stubEnv("OPENCLAW_CONTROL_UI_I18N_AUTH_OPTIONAL", "1");
-    const result = await execa(
-      process.execPath,
-      [
-        "--import",
-        "./scripts/tsx.mjs",
-        "scripts/control-ui-i18n.ts",
-        "sync",
-        "--write",
-        "--locale",
-        "pl",
-        "--refresh-key",
-        "chat.parentSession",
-      ],
-      { reject: false, timeout: 120_000, stripFinalNewline: false },
-    );
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("--refresh-key requires a configured translation provider");
-  });
-
-  it("translates native artifacts without Gateway state or Control UI catalogs", async () => {
-    const temp = createTempDirTracker();
-    const stateDir = path.join(temp.make("openclaw-translation-runtime-"), "state");
-    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
-    try {
-      const scriptUrl = pathToFileURL(path.resolve("scripts/native-app-i18n.ts")).href;
-      const uiOnlyModules = [
-        "scripts/lib/control-ui-i18n-catalog.ts",
-        "scripts/control-ui-i18n-verify.ts",
-        "scripts/lib/control-ui-i18n-raw-copy.ts",
-      ].map((file) => pathToFileURL(path.resolve(file)).href);
-      const translationsDir = path.join(path.dirname(stateDir), "translations");
-      const code = `
-        import assert from "node:assert/strict";
-        import { readFile } from "node:fs/promises";
-        import net from "node:net";
-        import { registerHooks, syncBuiltinESMExports } from "node:module";
-        const uiOnlyModules = new Set(${JSON.stringify(uiOnlyModules)});
-        registerHooks({
-          resolve(specifier, context, nextResolve) {
-            const resolved = nextResolve(specifier, context);
-            assert.ok(!uiOnlyModules.has(resolved.url), "Native translation loaded a Control UI catalog owner: " + resolved.url);
-            return resolved;
-          },
-        });
-        const rejectNetwork = () => { throw new Error("Unexpected network connection"); };
-        net.connect = net.createConnection = net.Socket.prototype.connect = rejectNetwork;
-        syncBuiltinESMExports();
-        let requests = 0;
-        globalThis.fetch = async (input, init) => {
-          requests += 1;
-          const request = new Request(input, init);
-          const payload = await request.json();
-          assert.ok(JSON.stringify(payload.input).includes("apps/android/wear/src/main/res/values/strings.xml"), "native owner context must reach the serialized provider request");
-          assert.ok(JSON.stringify(payload.input).includes("VoiceGestureLabel(onHold: startDictate)"), "native owner excerpt must reach the serialized provider request");
-          assert.ok(JSON.stringify(payload.input).includes("unnumbered printf"), "native formatting must retain source argument roles");
-          assert.ok(JSON.stringify(payload).includes("Connect -> Connecter"), "native glossary must reach the provider request");
-          const item = { id: "message", type: "message", role: "assistant", content: [] };
-          const text = JSON.stringify({ "native.android.0123456789abcdef": "Connecter {count}" });
-          const events = [
-            { type: "response.created", response: { id: "response" } },
-            { type: "response.output_item.added", output_index: 0, item },
-            { type: "response.content_part.added", output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } },
-            { type: "response.output_text.delta", output_index: 0, content_index: 0, delta: text },
-            { type: "response.output_item.done", output_index: 0, item: { ...item, content: [{ type: "output_text", text, annotations: [] }] } },
-            { type: "response.completed", response: { id: "response", status: "completed" } },
-          ];
-          return new Response(events.map(event => "data: " + JSON.stringify(event) + "\\n\\n").join(""), { headers: { "Content-Type": "text/event-stream" } });
-        };
-        const { syncNativeLocale } = await import(${JSON.stringify(scriptUrl)});
-        const result = await syncNativeLocale("fr", [{ id: "native.android.0123456789abcdef", source: "Connect {count}", surface: "android", sites: [{ kind: "fixture", path: "apps/android/wear/src/main/res/values/strings.xml" }], sourceContext: "VoiceGestureLabel(onHold: startDictate)" }], { glossary: [{ source: "Connect", target: "Connecter" }], translationsDir: ${JSON.stringify(translationsDir)} });
-        const artifact = JSON.parse(await readFile(${JSON.stringify(path.join(translationsDir, "fr.json"))}, "utf8"));
-        assert.equal(artifact.translations["native.android.0123456789abcdef"], "Connecter {count}");
-        assert.equal(result.translated, 1);
-        assert.equal(requests, 1);
-        console.log("isolated-runtime-ok");
-      `;
-      const result = await execa(
-        testNodeExecPath,
-        ["--import", "./scripts/tsx.mjs", "--input-type=module", "-e", code],
-        { reject: false, timeout: 120_000, stripFinalNewline: false },
-      );
-      expect(result.exitCode, result.stderr).toBe(0);
-      expect(result.stdout).toContain("isolated-runtime-ok");
-      expect(result.stdout + result.stderr).not.toContain(primary);
-      expect(result.stdout + result.stderr).not.toContain("[model-fetch]");
-      expect(existsSync(stateDir)).toBe(false);
-    } finally {
-      temp.cleanup();
-    }
-  });
-
-  it("switches only an unavailable model and keeps the fallback for later batches", async () => {
-    const complete = vi
-      .spyOn(llm, "completeSimple")
-      .mockResolvedValueOnce(
-        response({
-          stopReason: "error",
-          errorCode: "model_not_found",
-          errorMessage: `Cannot use ${primary}`,
-        }),
-      )
-      .mockResolvedValue(response());
-    expect((await translateNativeEntries(entries, "fr")).size).toBe(entries.length);
-    expect(complete.mock.calls.map(([model]) => model.id)).toEqual([primary, fallback, fallback]);
-    const log = vi.mocked(process.stdout).write.mock.calls.flat().join("");
-    expect(log).toContain("primary model unavailable");
-    expect(log).not.toContain(primary);
-    expect(log).not.toContain(fallback);
-  });
-
-  it("does not let a timed-out batch switch models after its split replacements complete", async () => {
-    vi.useFakeTimers();
-    vi.stubEnv("OPENCLAW_CONTROL_UI_I18N_PROMPT_TIMEOUT", "50");
-    vi.stubEnv("OPENCLAW_CONTROL_UI_I18N_BATCH_CHAR_BUDGET", "2000");
-    const late = Promise.withResolvers<AssistantMessage>();
-    llm.completeSimple.mockReturnValueOnce(late.promise).mockResolvedValue(response());
-    try {
-      const translated = translateNativeEntries(entries.slice(0, 2), "fr");
-      await vi.advanceTimersByTimeAsync(50);
-      expect((await translated).size).toBe(2);
-      expect(llm.completeSimple.mock.calls[0]?.[2].signal.aborted).toBe(true);
-
-      late.resolve(
-        response({ stopReason: "error", errorCode: "model_not_found", errorMessage: primary }),
-      );
-      await vi.runAllTimersAsync();
-      expect(llm.completeSimple.mock.calls.map(([model]) => model.id)).toEqual([
-        primary,
-        primary,
-        primary,
-      ]);
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("includes native owner context in the translation batch budget", async () => {
-    vi.stubEnv("OPENCLAW_CONTROL_UI_I18N_BATCH_CHAR_BUDGET", "500");
-    llm.completeSimple.mockResolvedValue(response());
-    const contextualEntries = entries.slice(0, 2).map((entry) => ({
-      id: entry.id,
-      source: entry.source,
-      sourcePath: "apps/android/app/src/main/java/ai/openclaw/app/ui/CronJobManagementPanel.kt",
-      sourceContext: "Button(enabled = !runPending) ".repeat(6),
-    }));
-
-    expect((await translateNativeEntries(contextualEntries, "fr")).size).toBe(2);
-    expect(llm.completeSimple).toHaveBeenCalledTimes(2);
-  });
-
-  it.each(["401", "404"])(
-    "keeps %s failures private without changing models",
-    async (errorCode) => {
-      const complete = vi.spyOn(llm, "completeSimple").mockResolvedValue(
-        response({
-          stopReason: "error",
-          errorCode,
-          errorMessage: `${errorCode}: ${primary} unavailable; try ${fallback}`,
-        }),
-      );
-      await expect(translateNativeEntries(entries.slice(0, 1), "fr")).rejects.toThrow(
-        "translation provider failed",
-      );
-      expect(complete.mock.calls.every(([model]) => model.id === primary)).toBe(true);
-      const log = vi.mocked(process.stdout).write.mock.calls.flat().join("");
-      expect(log).not.toContain(primary);
-      expect(log).not.toContain(fallback);
-    },
-  );
-
-  it("does not expose rejected provider errors or escaped model echoes", async () => {
-    const complete = vi
-      .spyOn(llm, "completeSimple")
-      .mockRejectedValue(new Error(`Transport for ${primary}`));
-    await expect(translateNativeEntries(entries.slice(0, 1), "fr")).rejects.toThrow(
-      "provider_error",
-    );
-    complete.mockResolvedValue(
-      response({ content: [{ type: "text", text: '{"label0":"private-\\u0070rimary-fixture"}' }] }),
-    );
-    await expect(translateNativeEntries(entries.slice(0, 1), "fr")).rejects.toThrow(
-      "provider_error",
-    );
-    expect(vi.mocked(process.stdout).write.mock.calls.flat().join("")).not.toContain(primary);
-  });
-});
-
 describe("control-ui config hint source catalog", () => {
   it("includes core config labels and help under collision-safe keys", () => {
     const source = flattenTranslations(loadControlUiSourceCatalog());

@@ -61,9 +61,6 @@ function skipNamespaceEntry(id: string, name: string, installed: boolean) {
     id === ".tmp" ||
     id === ".cache/openclaw-pnpm-store" ||
     id === ".cache/vitest" ||
-    id === "apps/macos/.build" ||
-    id === "apps/macos/.build-local" ||
-    id === "apps/macos-mlx-tts/.build" ||
     (!installed && [".git", ".artifacts", ".claude", ".agents", ".local", "dist"].includes(name)) ||
     // Installed tool scratch is not resolvable; pnpm's package store is.
     (installed && name !== ".pnpm" && name.startsWith(".")) ||

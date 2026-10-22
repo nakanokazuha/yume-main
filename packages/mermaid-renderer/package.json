@@ -6,9 +6,6 @@
   "exports": {
     ".": "./src/renderer.ts"
   },
-  "scripts": {
-    "build": "node ../../scripts/run-node-package-bin.mts vite build"
-  },
   "dependencies": {
     "@openclaw/normalization-core": "workspace:*",
     "dompurify": "3.4.16",

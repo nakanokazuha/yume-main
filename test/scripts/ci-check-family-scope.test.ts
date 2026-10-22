@@ -65,7 +65,7 @@ const cases: ScopeCase[] = [
   {
     paths: [
       "ui/src/styles/chat.css",
-      "apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json",
+      "ui/src/lib/chat/tool-display.json",
     ],
     expected: { checkTasks: ["guards"] },
   },
@@ -73,18 +73,6 @@ const cases: ScopeCase[] = [
   {
     paths: ["docs/.generated/sqlite-session-transcript-schema-baseline.sha256"],
     expected: { additionalGroups: ["source-contracts"] },
-  },
-  {
-    paths: ["apps/shared/OpenClawKit/Sources/OpenClawNativeState/OpenClawNativeStateSQLite.swift"],
-    expected: { additionalGroups: ["boundaries"] },
-  },
-  {
-    paths: ["apps/macos/Sources/OpenClaw/Storage.swift"],
-    expected: { additionalGroups: ["runtime-topology-architecture"] },
-  },
-  {
-    paths: ["apps/android/app/src/main/java/ai/openclaw/app/protocol/OpenClawProtocolConstants.kt"],
-    expected: { fastTasks: ["bundled-protocol"] },
   },
   ...["docs/plugins/sdk-subpaths.md", "extensions/discord/skills/discord/SKILL.md"].map((path) => ({
     paths: ["ui/src/styles/chat.css", path],

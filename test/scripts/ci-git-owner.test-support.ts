@@ -199,7 +199,6 @@ export async function runCiGitStep(options: {
     typeof options.workflow === "object" &&
     [
       ".github/workflows/linux-app-release.yml",
-      ".github/workflows/macos-release.yml",
       ".github/workflows/npm-placeholder-bootstrap.yml",
     ].includes(options.workflow.file);
   const pluginRelease =

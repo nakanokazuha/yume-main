@@ -16,7 +16,6 @@ export const UPLOAD_ARTIFACT_V7 =
 export const DOWNLOAD_ARTIFACT_V8 =
   "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c";
 export const MANTIS_GITHUB_APP_CLIENT_ID = "Iv23liPJCozR0uHm6P7G";
-const SETUP_ANDROID_TOOLCHAIN_ACTION = ".github/actions/setup-android-toolchain/action.yml";
 export const MATURITY_SCORECARD_WORKFLOW = ".github/workflows/maturity-scorecard.yml";
 export const AMBIGUOUS_MAIN_PUSH_DIAGNOSTIC =
   "::error title=ambiguous main push::github.event.before is zero; refusing to infer a diff base for a created or recreated main branch.";
@@ -100,7 +99,6 @@ export function evaluateWorkflowExpression(
     requestedRunnerBackend?: "default" | "hybrid" | "runson";
     ciShape?: "default" | "main";
     ciOnPush?: string;
-    includeAndroid?: boolean;
     runnerEnvironment?: "" | "github-hosted" | "self-hosted";
     runnerProfile?: "blacksmith" | "github" | "hybrid";
     runAttempt: number;
@@ -198,7 +196,6 @@ export function evaluateWorkflowExpression(
       release_publish_run_id: context.releasePublishRunId ?? "",
       runner_backend: context.requestedRunnerBackend ?? "default",
       ci_shape: context.ciShape ?? "default",
-      include_android: context.includeAndroid ?? false,
       release_gate: context.releaseGate ?? false,
       release_scope: context.releaseScope ?? "full",
       validation_tier: context.validationTier ?? "full",
@@ -325,10 +322,6 @@ export function runWorkflowShellScript(
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
-}
-
-export function readAndroidToolchainAction() {
-  return parse(readFileSync(SETUP_ANDROID_TOOLCHAIN_ACTION, "utf8"));
 }
 
 export function readBuildArtifactsTestboxWorkflow() {

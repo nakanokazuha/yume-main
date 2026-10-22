@@ -658,7 +658,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
     event({ kind: 'ci-watched' });
     value = { workflow_runs: [{ id: 1, conclusion: null }] };
   } else if (endpoint.includes('/actions/runs/1/attempts/1/jobs?')) {
-    value = { total_count: 2, jobs: ['macos-node', 'macos-swift'].map(name => ({
+    value = { total_count: 1, jobs: ['macos-node'].map(name => ({
       name, run_id: 1, run_attempt: 1, status: 'queued', conclusion: null,
       runner_id: null, steps: [],
     })) };

@@ -30,9 +30,20 @@ Before deletion, identify every path, owning package, static and dynamic importe
 
 - Commit: `fe376204` (`remove SenseAudio media provider`). Rollback anchor: `upstream-v2026.10.5-baseline` / `8983526a`.
 - Removed the extension package, provider implementation and tests, provider documentation, provider asset, icon/catalog entries, environment key, test registration case, and labeler/knip entries. The exact changed path list and commands are in `templates/REMOVAL_LEDGER.csv`.
-- The package had only a workspace `@openclaw/plugin-sdk` development dependency and no external runtime dependency. The workspace package count moved from 189 to 188; the lockfile did not change.
+- The package had only a workspace `@openclaw/plugin-sdk` development dependency and no external runtime dependency. The workspace count moved from 189 to 188. The tracked lockfile removes the six-line SenseAudio workspace importer; dependency versions/resolutions are unchanged.
 - The generic provider registration seam remains. The focused provider-contract, agent-loop, plugin security, dotenv, and Gateway frame suites passed; the complete build passed. Static source and generated `dist` scans found no active SenseAudio reference. A historical release note and the archived upstream documentation are retained as provenance.
-- This batch is verified on its own; M1/G1 remains open until the other approved removal classes, minimal-core smoke, clean-install evidence, size comparison, and complete extraction report are done.
+- The fresh-worktree baseline and extracted builds passed. `dist` fell from 380,143,683 bytes / 20,051 files to 380,048,095 bytes / 20,044 files. Startup JavaScript gzip fell by 12 bytes; both builds retain the same pre-existing startup-budget overrun.
+- This batch is verified on its own; M1/G1 remains open until the other removal classes, minimal-core smoke, and complete extraction report are done.
+
+### B-002 — Upstream native application suite (source and native-only build closure removed)
+
+- Authorized scope: remove Android and upstream Swift application trees because Yume's clients are the retained React/Tauri desktop shell and iPhone PWA. `apps/linux` remains as the Tauri shell; the app trees are outside `pnpm-workspace.yaml`.
+- Baseline native trees contained 2,878 tracked files / 47,977,106 bytes: Android 931 / 12,016,065; iOS 639 / 14,827,888; Swift macOS 756 / 14,270,698; shared Apple packages 512 / 6,772,703; `swabble` 35 / 63,157; MLX TTS 5 / 26,595.
+- Removed native localization, app-specific protocol/build hooks and workflows. Shared Node/core security, Mac host Node tests, Tauri release, Docker and non-native release validation remain. Moved tool-display metadata into `ui/src/lib/chat/tool-display.json`, retained the Apple device identifier notice beside its UI helper, and preserved Mermaid notices and the web renderer.
+- No external Node dependency or pnpm workspace project was removed. Exact source/workflow mappings and checks are recorded in `templates/REMOVAL_LEDGER.csv` and `docs/17_BUILD_STATUS.md`.
+- Node 26.3.1 frozen install and full build passed; focused core/plugin/Gateway/config/security/UI/build tests passed 109 tests. Targeted script, release-preflight, workflow absence, release-plan, native release preparation and CI planner suites passed; full release continuation passed 21 tests. The first Node 24.21.0 build failed the final input-stability check; after the working tree stabilized, a complete rerun passed in 3m06.6s. The Node 22.23.1 `node:sqlite` scanner regression test passes.
+- One broad CI guard attempt was rejected by automatic review because it included shared security and release controls. The implemented cleanup is limited to removed app-specific jobs and files. The current checkout-fixture runner still has 9 process-census `EPERM` failures (140 passed, 8 skipped); details are recorded in `docs/17_BUILD_STATUS.md`.
+- No real inference, persistent memory or device capability was exercised, and no hosted CI or hardware smoke ran. B-002 is locally verified; G1 remains open until dummy minimal-core smoke, preserved security contracts, final absence scans, controlled artifact comparison and extraction report pass.
 
 ## Do not remove without additional evidence
 

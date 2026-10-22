@@ -46,7 +46,7 @@ const OPENAI_IMAGE_MIN_CACHE_READ = 3_840;
 const OPENAI_IMAGE_MIN_HIT_RATE = 0.82;
 const LARGE_CACHE_PROMPT_SECTIONS = 1_024;
 const LIVE_TEST_PNG_URL = new URL(
-  "../../apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+  "../../ui/public/favicon-32.png",
   import.meta.url,
 );
 

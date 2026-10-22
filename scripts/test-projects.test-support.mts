@@ -754,10 +754,9 @@ const CODEX_VERSION_CONTRACT_TEST_TARGETS = [
   "extensions/openai/openai-provider.test.ts",
   "test/scripts/codex-client-version-contract.test.ts",
 ];
-// The iframe script and native document load as assets outside the import graph.
+// The iframe script loads as an asset outside the import graph.
 const MERMAID_RENDERER_TEST_TARGETS = [
   "ui/src/components/markdown-mermaid.runtime.browser.test.ts",
-  "ui/src/components/markdown-mermaid-native.browser.test.ts",
 ];
 const SOURCE_TEST_TARGETS = new Map([
   ...PRECISE_SOURCE_TEST_TARGETS,
@@ -776,20 +775,10 @@ const SOURCE_TEST_TARGETS = new Map([
     "extensions/browser/src/browser/chrome-mcp-options.ts",
     ["extensions/browser/src/browser/chrome-mcp.test.ts"],
   ],
-  [
-    "scripts/prepare-apple-mermaid.mjs",
-    [
-      "test/scripts/build-and-run-mac.test.ts",
-      "test/scripts/package-mac-app.test.ts",
-      "test/scripts/ci-workflow-guards.test.ts",
-    ],
-  ],
   ["packages/mermaid-renderer/package.json", MERMAID_RENDERER_TEST_TARGETS],
   ["packages/mermaid-renderer/vite.config.ts", MERMAID_RENDERER_TEST_TARGETS],
-  ["packages/mermaid-renderer/native/index.html", MERMAID_RENDERER_TEST_TARGETS],
   ["packages/mermaid-renderer/src/renderer.ts", MERMAID_RENDERER_TEST_TARGETS],
   ["packages/mermaid-renderer/src/frame.js", MERMAID_RENDERER_TEST_TARGETS],
-  ["packages/mermaid-renderer/src/native.ts", MERMAID_RENDERER_TEST_TARGETS],
   [
     "packages/normalization-core/src/record-coerce.ts",
     ["packages/normalization-core/src/record-coerce.test.ts", ...MERMAID_RENDERER_TEST_TARGETS],
@@ -2919,7 +2908,6 @@ const changedScopeTests = [
   "src/scripts/ci-changed-scope.contract-fixtures.test.ts",
   "src/scripts/ci-changed-scope.control-ui.test.ts",
   "src/scripts/ci-changed-scope.git-owner.test.ts",
-  "src/scripts/ci-changed-scope.native-i18n.test.ts",
   changedScope,
   "src/scripts/ci-changed-scope.windows.test.ts",
 ];
@@ -2962,7 +2950,6 @@ const EXACT_TOOLING_TARGETS = new Map<string, string[]>([
     ],
   ],
   [".github/workflows/ci.yml", ["ci-platform-checkout", "ci-linux-git", "ci-git-owner"]],
-  [".github/actions/setup-android-toolchain/action.yml", [workflowPlanning]],
   [".github/workflows/docs-sync-publish.yml", ["docs-sync-publish"]],
   [".github/workflows/docs-agent.yml", ["docs-agent-workflow"]],
   ["scripts/generate-ci-git-owner.mts", ["ci-git-owner"]],
@@ -2999,7 +2986,6 @@ const EXACT_TOOLING_TARGETS = new Map<string, string[]>([
   ["test/e2e/qa-lab/runtime/mcp-channels-docker-client.ts", [dockerE2e, pluginPrerelease]],
   ["scripts/e2e/lib/mcp-code-mode-probe-server.ts", ["mcp-code-mode-gateway-client"]],
   ["scripts/e2e/cron-cli-docker.sh", [dockerBuild, "docker-e2e-observability"]],
-  ["scripts/ios-release-upload.sh", ["ios-release-wrapper-args", "ios-release-fastlane-gates"]],
   ["scripts/release-verify-beta.ts", ["release-wrapper-scripts"]],
   ["scripts/lib/bundled-plugin-build-entries.mjs", ["bundled-plugin-build-entries", releaseCheck]],
   ["scripts/lib/docker-e2e-package.sh", [dockerBuild]],
@@ -3012,12 +2998,9 @@ const EXACT_TOOLING_TARGETS = new Map<string, string[]>([
       npmPostpublish,
       "test/plugin-npm-release.test.ts",
       "test/plugin-clawhub-release.test.ts",
-      "android-version",
-      "android-pin-version",
       "docker-release-policy",
       "docker-release-artifacts",
       "full-release-validation-at-sha",
-      "ios-version",
       "openclaw-npm-extended-stable-release",
       "openclaw-npm-publish",
       "npm-prepared-bundle",
@@ -3266,10 +3249,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
   ],
   [/^\.github\/workflows\/linux-app-release\.yml$/u, ["release-workflow-git-lifecycle"]],
   [
-    /^\.github\/workflows\/macos-release\.yml$/u,
-    ["release-workflow-git-lifecycle", packageAcceptance],
-  ],
-  [
     /^\.github\/workflows\/npm-placeholder-bootstrap\.yml$/u,
     ["release-workflow-git-lifecycle", "npm-placeholder-publication"],
   ],
@@ -3320,13 +3299,12 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
     /^\.github\/(?:workflows\/mantis-web-ui-chat-proof\.yml|actions\/mantis-validate-trusted-ref\/action\.yml)$/u,
     ["mantis-web-ui-chat-proof-workflow", packageAcceptance, workflowGuards],
   ],
-  [/^\.github\/workflows\/android-release\.yml$/u, [packageAcceptance, workflowGuards]],
   [
     /^\.github\/workflows\/(?:qa-profile-evidence|maturity-scorecard|mantis-discord-(?:status-reactions|thread-attachment))\.yml$/u,
     [workflowEvidence],
   ],
   [
-    /^\.github\/(?:actions\/(?:ensure-base-commit|git-owner|publish-generated-pr|mantis-validate-trusted-ref)\/|workflows\/(?:workflow-sanity|qa-profile-evidence|maturity-scorecard|docs-agent|docs-sync-publish|openclaw-performance|linux-app-release|macos-release|npm-placeholder-bootstrap|plugin-clawhub-release|plugin-npm-release|mantis-(?:discord-(?:smoke|status-reactions|thread-attachment)|slack-desktop-smoke|web-ui-chat-proof))\.yml$)/u,
+    /^\.github\/(?:actions\/(?:ensure-base-commit|git-owner|publish-generated-pr|mantis-validate-trusted-ref)\/|workflows\/(?:workflow-sanity|qa-profile-evidence|maturity-scorecard|docs-agent|docs-sync-publish|openclaw-performance|linux-app-release|npm-placeholder-bootstrap|plugin-clawhub-release|plugin-npm-release|mantis-(?:discord-(?:smoke|status-reactions|thread-attachment)|slack-desktop-smoke|web-ui-chat-proof))\.yml$)/u,
     [
       "ci-git-owner",
       "ci-linux-git",
@@ -3360,7 +3338,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
     ["test/e2e/qa-lab/runtime/package-openclaw-for-docker.e2e.test.ts"],
   ],
   [/^scripts\/run-node\.(?:mjs|mts)$/u, [runNode]],
-  [/^scripts\/ios-write-swift-filelist\.m[jt]s$/u, ["ios-run"]],
   [
     /^scripts\/pr-lib\/(?:merge(?:-outcome)?\.sh|merge-(?:legacy|pre-dispatch)-refusal\.mjs)$/u,
     ["pr-merge", "pr-merge-outcome", "pr-merge-pre-dispatch-refusal", "pr-merge-qualified-refusal"],
@@ -3397,7 +3374,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
   [/^scripts\/pr-lib\/worktree\.sh$/u, ["test/vitest/vitest.tooling.config.ts"]],
   [/^scripts\/dev\/gateway-smoke\.ts$/u, ["test/e2e/qa-lab/runtime/gateway-smoke.e2e.test.ts"]],
   [/^scripts\/e2e\/mock-openai-server\.mjs$/u, ["e2e-mock-config-limits"]],
-  [/^apps\/android\/scripts\/build-release-artifacts\.ts$/u, ["android-release-artifacts"]],
   [
     new RegExp(
       [
@@ -3409,7 +3385,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
     ),
     ["auth-monitor"],
   ],
-  [/^scripts\/native-(?:app-i18n|i18n-inventory)\.ts$/u, ["native-app-i18n", workflowGuards]],
   [
     /^scripts\/github\/(?:dependency-guard|guard-shared)\.mjs$/u,
     ["dependency-guard-script", "security-review-workflow"],
@@ -3457,10 +3432,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
     /^scripts\/check-workflows\.mts$/u,
     ["check-composite-action-input-interpolation", "check-no-conflict-markers", workflowGuards],
   ],
-  [/^apps\/android\/fastlane\/Fastfile$/u, ["android-release-fastlane-gates"]],
-  [/^apps\/ios\/fastlane\/Fastfile$/u, ["ios-release-fastlane-gates"]],
-  [/^scripts\/ios-release-cut\.(?:sh|ts)$/u, ["ios-release-plan"]],
-  [/^scripts\/ios-release-prepare\.sh$/u, ["ios-release-prepare", "ios-release-wrapper-args"]],
   [
     /^scripts\/lib\/bundled-runtime-sidecar-paths\.json$/u,
     [
@@ -3470,7 +3441,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
       npmPostpublish,
     ],
   ],
-  [/^scripts\/lib\/android-version\.ts$/u, ["android-version", "android-pin-version"]],
   [
     /^scripts\/lib\/docker-e2e-plan\.(?:mjs|mts)$/u,
     [dockerE2e, "docker-all-scheduler", pluginPrerelease],
@@ -3548,21 +3518,8 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
     /^scripts\/lib\/build-metadata\.sh$/u,
     [
       "test/scripts/docker-setup.test.ts",
-      "apple-release-source-check",
-      "ios-version",
-      "package-mac-app",
       installDocker,
     ],
-  ],
-  [/^scripts\/lib\/plistbuddy\.sh$/u, ["create-dmg", "package-mac-app", "package-mac-dist"]],
-  [
-    /^scripts\/lib\/swift-toolchain\.sh$/u,
-    ["package-mac-app", "package-mac-dist", "xcode-test-logs"],
-  ],
-  [/^scripts\/stage-cua-driver-macos\.sh$/u, ["package-mac-app"]],
-  [
-    /^scripts\/(stage-cloudflared-macos\.sh|lib\/cloudflared-macos\.json)$/u,
-    ["stage-cloudflared-macos", "package-mac-app"],
   ],
   [
     /^scripts\/lib\/npm-publish-plan\.mjs$/u,
@@ -3573,8 +3530,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
       "test/plugin-npm-release.test.ts",
       "test/plugin-clawhub-release.test.ts",
       "release-upgrade-baseline",
-      "android-version",
-      "ios-version",
       "upgrade-survivor-baselines",
       "upgrade-survivor-config-recipe",
     ],
@@ -3668,10 +3623,6 @@ const SEMANTIC_TOOLING_TARGET_PATTERNS: Array<[RegExp, string[]]> = [
       crossOsReleaseChecks,
       changedScope,
     ],
-  ],
-  [
-    /^scripts\/sparkle-build\.ts$/u,
-    ["test/appcast.test.ts", releaseCheck, "package-mac-app", "package-mac-dist"],
   ],
   [
     /^test\/vitest\/vitest\.contracts-paths\.mjs$/u,

@@ -13,32 +13,10 @@ const {
   isNodeTestDataOnlyPath,
   listChangedPaths,
   parseArgs,
-  shouldRunIosScreenshots,
   writeGitHubOutput,
 } = await import("../../scripts/ci-changed-scope.mjs");
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-
-it.each(["pull_request", "push", "schedule", "workflow_dispatch"])(
-  "keeps Android capture scope outside ordinary PRs (%s)",
-  (workflowEventName) => {
-    const changedPaths = ["apps/android/app/src/main/java/ai/openclaw/app/MainActivity.kt"];
-    const output = path.join(tempDirs.make("openclaw-ci-capture-scope-"), "scope.out");
-    writeGitHubOutput(
-      detectChangedScope(changedPaths),
-      output,
-      undefined,
-      undefined,
-      true,
-      changedPaths,
-      workflowEventName,
-    );
-    const scope = parseGitHubOutput(fs.readFileSync(output, "utf8"));
-    expect(scope.run_android).toBe("true");
-    expect(scope.run_native_i18n).toBe("true");
-    expect(scope.run_android_screenshots).toBe(String(workflowEventName !== "pull_request"));
-  },
-);
 
 function parseGitHubOutput(output: string): Record<string, string> {
   const parsed: Record<string, string> = {};
@@ -111,10 +89,7 @@ describe("parseArgs", () => {
 function expectedScope(overrides: Partial<ReturnType<typeof detectChangedScope>> = {}) {
   return {
     runNode: false,
-    runMacos: false,
     runMacosNode: false,
-    runIosBuild: false,
-    runAndroid: false,
     runWindows: false,
     runSkillsPython: false,
     runChangedSmoke: false,
@@ -136,43 +111,12 @@ describe("detectChangedScope", () => {
     [["src/config/defaults.ts", "docs/docs.json"], { runNode: true }],
     [[".crabbox.yaml"], { runNode: true }],
     [["src/skills/runtime/refresh.ts"], { runNode: true, runMacosNode: true, runWindows: true }],
-    [[".github/actions/setup-android-toolchain/action.yml"], { runNode: true, runAndroid: true }],
-    [["apps/macos/Sources/Foo.swift"], { runMacos: true, runMacosNode: true }],
-    [["apps/ios/Sources/RootTabs.swift"], { runIosBuild: true }],
-    [
-      ["apps/shared/OpenClawKit/Sources/Foo.swift"],
-      {
-        runMacos: true,
-        runMacosNode: true,
-        runIosBuild: true,
-        runAndroid: true,
-      },
-    ],
-    [
-      ["apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift"],
-      { runIosBuild: true },
-    ],
-    [
-      ["config/swiftformat"],
-      { runNode: true, runMacos: true, runMacosNode: true, runIosBuild: true },
-    ],
-    [
-      ["scripts/run-swiftlint.mts"],
-      { runNode: true, runMacos: true, runMacosNode: true, runIosBuild: true },
-    ],
-    [
-      ["scripts/prepare-apple-mermaid.mjs"],
-      { runNode: true, runMacos: true, runMacosNode: true, runIosBuild: true },
-    ],
-    [["scripts/package-mac-app.sh"], { runNode: true, runMacos: true, runMacosNode: true }],
-    [["scripts/lib/openclaw-bun.json"], { runNode: true, runMacos: true, runMacosNode: true }],
-    [["scripts/stage-openclaw-bun.sh"], { runNode: true, runMacos: true, runMacosNode: true }],
+    [["src/daemon/launchd.test.ts"], { runNode: true, runMacosNode: true }],
     [
       ["skills/skill-creator/scripts/test_quick_validate.py"],
       { runNode: true, runSkillsPython: true },
     ],
     [[".github/workflows/ci.yml"], { runNode: true, runWindows: true, runUiTests: true }],
-    [["scripts/ci-xcodebuild.py"], { runNode: true, runIosBuild: true }],
     [["scripts/ci-xcodebuild.py.bak"], { runNode: true }],
     [["scripts/install.ps1"], { runNode: true, runWindows: true, runChangedSmoke: true }],
     [["scripts/install.sh"], { runNode: true, runChangedSmoke: true }],
@@ -183,10 +127,6 @@ describe("detectChangedScope", () => {
       {
         runNode: true,
         runChangedSmoke: true,
-        runMacos: true,
-        runMacosNode: true,
-        runIosBuild: true,
-        runAndroid: true,
       },
     ],
     [["src/plugins/loader.test.ts"], { runNode: true }],
@@ -203,16 +143,6 @@ describe("detectChangedScope", () => {
     ["src/wizard/i18n/locales/helpers/format.ts", false],
   ] as const)("classifies data-only inputs: %s", (file, dataOnly) => {
     expect(isNodeTestDataOnlyPath(file)).toBe(dataOnly);
-  });
-
-  it.each([
-    ["scripts/install-simslim.sh", true],
-    ["scripts/install-simslim.sh.bak", false],
-  ])("routes only exact iOS build helper paths: %s", (file, enabled) => {
-    expect(detectChangedScope([file])).toEqual(
-      expectedScope({ runNode: true, runIosBuild: enabled }),
-    );
-    expect(shouldRunIosScreenshots([file])).toBe(enabled);
   });
 
   it.each<[string[], boolean, boolean]>([
@@ -338,10 +268,8 @@ describe("detectChangedScope", () => {
       execFileSync("git", ["config", "user.name", "CI"], { cwd: repoDir });
       for (const sourcePath of [
         "scripts/ci-changed-scope.mjs",
-        "scripts/native-protocol-inputs.json",
         "scripts/lib/arg-utils.runtime.mjs",
         "scripts/lib/changed-path-facts.mjs",
-        "scripts/lib/ci-native-generated-scope.mjs",
         "scripts/lib/direct-run.mjs",
         "scripts/lib/merge-head-diff-base.mjs",
       ]) {
@@ -378,7 +306,7 @@ describe("detectChangedScope", () => {
 
       const output = parseGitHubOutput(fs.readFileSync(outputPath, "utf8"));
       expect(Object.keys(output).toSorted()).toEqual(
-        "changed_paths_file changed_paths_json node_test_data_only run_android run_android_screenshots run_changed_smoke run_control_ui_i18n run_fast_install_smoke run_full_install_smoke run_ios_build run_ios_screenshots run_macos run_macos_node run_native_i18n run_node run_node_fast_ci_routing run_node_fast_only run_node_fast_plugin_contracts run_skills_python run_ui_tests run_windows strict_control_ui_i18n strict_native_i18n".split(
+        "changed_paths_file changed_paths_json node_test_data_only run_changed_smoke run_control_ui_i18n run_fast_install_smoke run_full_install_smoke run_macos_node run_node run_node_fast_ci_routing run_node_fast_only run_node_fast_plugin_contracts run_skills_python run_ui_tests run_windows strict_control_ui_i18n".split(
           " ",
         ),
       );
@@ -394,11 +322,8 @@ describe("detectChangedScope", () => {
           const selected =
             (failSafe && !key.startsWith("run_node_fast")) ||
             (key === "run_node" && Boolean(changedPath)) ||
-            (key === "run_android" && changedPath === "test/fixtures/talk-config-contract.json") ||
             (key === "run_macos_node" &&
-              (changedPath === "test/scripts/mac-script-fixture.test-support.ts" ||
-                changedPath === "test/fixtures/talk-config-contract.json")) ||
-            (key === "run_macos" && changedPath === "test/fixtures/talk-config-contract.json") ||
+              changedPath === "src/daemon/launchd.test.ts") ||
             (key === "run_windows" &&
               changedPath === "src/process/exec.windows.integration.test.ts");
           expect(value, key).toBe(String(selected));

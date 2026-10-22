@@ -1,4 +1,4 @@
-import SHARED_TOOL_DISPLAY_JSON from "../../../../apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json" with { type: "json" };
+import SHARED_TOOL_DISPLAY_JSON from "./tool-display.json" with { type: "json" };
 import { icons, type IconName } from "../../components/icons.ts";
 
 const tools = new Map<string, { icon: string }>(Object.entries(SHARED_TOOL_DISPLAY_JSON.tools));

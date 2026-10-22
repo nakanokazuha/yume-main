@@ -319,20 +319,6 @@ const jsRuntimeEntrypoints = new Set([
 const awsMacosCorepackEntrypoints = new Set(["pnpm", "yarn", "corepack"]);
 const awsMacosBunEntrypoints = new Set(["bun", "bunx"]);
 const awsMacosBunVersion = "1.4.2";
-const awsMacosSwiftEntrypoints = new Set(["swift", "xcodebuild"]);
-const awsMacosSwiftScriptTargets = new Set([
-  "mac:package",
-  "mac:restart",
-  "scripts/build-and-run-mac.sh",
-  "scripts/package-mac-app.sh",
-  "scripts/package-mac-dist.sh",
-  "scripts/restart-mac.sh",
-]);
-const awsMacosPackageManagerScriptTargets = new Set([
-  "scripts/package-mac-app.sh",
-  "scripts/package-mac-dist.sh",
-  "scripts/restart-mac.sh",
-]);
 const shellControlCommandPrefixes = new Set([
   "if",
   "while",
@@ -1535,51 +1521,6 @@ function commandNeedsAwsMacosBun(commandArgs: string[]) {
   return commandNeedsEntrypoint(commandArgs, awsMacosBunEntrypoints);
 }
 
-function commandNeedsAwsMacosSwiftToolchain(commandArgs: string[]) {
-  if (commandArgs.length === 1) {
-    return shellCommandWordCandidates(commandArgs[0] ?? "").some(
-      commandWordsNeedAwsMacosSwiftToolchain,
-    );
-  }
-  return commandWordsNeedAwsMacosSwiftToolchain(normalizedCommandWords(commandArgs));
-}
-
-function commandWordsNeedAwsMacosSwiftToolchain(wordsInput: string[]): boolean {
-  let words = wordsInput;
-  words = normalizeExecutableWords(words);
-  const first = (words[0] ?? "").split("/").pop() ?? "";
-  if (isSupportedSystemEnvCommand(first)) {
-    const targetWords = [...words];
-    if (stripEnvCommandOptions(targetWords, { canShimIgnoreEnvironment: true })) {
-      return commandWordsNeedAwsMacosSwiftToolchain(targetWords);
-    }
-  }
-  if (awsMacosSwiftEntrypoints.has(first)) {
-    return true;
-  }
-
-  if (first === "pnpm") {
-    const scriptName = words[1] === "run" ? words[2] : words[1];
-    if (awsMacosSwiftScriptTargets.has(scriptName ?? "")) {
-      return true;
-    }
-  }
-
-  if (isScriptTarget(words[0], awsMacosSwiftScriptTargets)) {
-    return true;
-  }
-
-  if (commandWordsRunScriptTarget(words, awsMacosSwiftScriptTargets)) {
-    return true;
-  }
-
-  const inlineCommand = shellInlineCommand(words);
-  if (!inlineCommand) {
-    return false;
-  }
-  return shellCommandWordCandidates(inlineCommand).some(commandWordsNeedAwsMacosSwiftToolchain);
-}
-
 function commandWordsNeedAwsMacosPackageManager(
   wordsInput: string[],
   options: CommandNormalizeOptions = {},
@@ -1599,14 +1540,6 @@ function commandWordsNeedAwsMacosPackageManager(
     ) {
       return commandWordsNeedAwsMacosPackageManager(targetWords, options);
     }
-  }
-
-  if (isScriptTarget(words[0], awsMacosPackageManagerScriptTargets)) {
-    return true;
-  }
-
-  if (commandWordsRunScriptTarget(words, awsMacosPackageManagerScriptTargets)) {
-    return true;
   }
 
   const inlineCommand = shellInlineCommand(words);
@@ -3127,7 +3060,6 @@ function analyzeRemoteCommand(invocation: CommandInvocation) {
     packageManager: packageManagerNeeded,
     runtimeEntrypoint,
     scopedEnvCommand,
-    swift: commandNeedsAwsMacosSwiftToolchain(runArgs),
   };
 }
 
@@ -3201,53 +3133,6 @@ function injectRemoteAwsMacosJsBootstrap(
   return replaceRunCommandWithShell(run, shellCommand);
 }
 
-function remoteAwsMacosSwiftBootstrap() {
-  return [
-    "openclaw_crabbox_require_macos_swift_63() {",
-    'openclaw_xcode="";',
-    'for openclaw_candidate in /Applications/Xcode_26*.app /Applications/Xcode-26*.app /Applications/Xcode_2[7-9]*.app /Applications/Xcode-2[7-9]*.app; do if [ -d "$openclaw_candidate" ]; then openclaw_xcode="$openclaw_candidate"; fi; done;',
-    'if [ -n "$openclaw_xcode" ]; then openclaw_developer="$openclaw_xcode/Contents/Developer"; if [ ! -d "$openclaw_developer" ]; then openclaw_developer="$openclaw_xcode"; fi; sudo xcode-select -s "$openclaw_developer" || return 1; fi;',
-    'openclaw_swift_version="$(swift --version 2>&1)" || { status=$?; printf "%s\\n" "$openclaw_swift_version" >&2; return "$status"; };',
-    'printf "%s\\n" "$openclaw_swift_version" >&2;',
-    'openclaw_swift_major_minor="$(printf "%s\\n" "$openclaw_swift_version" | sed -nE "s/.*Apple Swift version ([0-9]+)\\.([0-9]+).*/\\1 \\2/p" | head -n 1)";',
-    'if [ -z "$openclaw_swift_major_minor" ]; then echo "[crabbox] OpenClaw macOS app proof requires Swift tools 6.3+; unable to parse swift --version." >&2; return 2; fi;',
-    "set -- $openclaw_swift_major_minor;",
-    'if [ "$1" -lt 6 ] || { [ "$1" -eq 6 ] && [ "$2" -lt 3 ]; }; then',
-    'echo "[crabbox] OpenClaw macOS app proof requires Swift tools 6.3+ (Xcode 26.4+)." >&2;',
-    'echo "[crabbox] current Swift is $1.$2; select/install Xcode 26.4 or newer." >&2;',
-    "return 2;",
-    "fi;",
-    'openclaw_xcodebuild_version="$(xcodebuild -version 2>&1)" || { printf "%s\\n" "$openclaw_xcodebuild_version" >&2; echo "[crabbox] OpenClaw macOS app proof requires Xcode 26.4+; active developer directory does not provide usable xcodebuild." >&2; return 2; };',
-    'printf "%s\\n" "$openclaw_xcodebuild_version" >&2;',
-    'openclaw_xcode_major_minor="$(printf "%s\\n" "$openclaw_xcodebuild_version" | sed -nE "s/^Xcode ([0-9]+)\\.([0-9]+).*/\\1 \\2/p" | head -n 1)";',
-    'if [ -z "$openclaw_xcode_major_minor" ]; then echo "[crabbox] OpenClaw macOS app proof requires Xcode 26.4+; unable to parse xcodebuild -version." >&2; return 2; fi;',
-    "set -- $openclaw_xcode_major_minor;",
-    'if [ "$1" -lt 26 ] || { [ "$1" -eq 26 ] && [ "$2" -lt 4 ]; }; then echo "[crabbox] OpenClaw macOS app proof requires Xcode 26.4+; current xcodebuild is $1.$2." >&2; return 2; fi;',
-    "};",
-    "openclaw_crabbox_require_macos_swift_63",
-  ].join(" ");
-}
-
-function injectRemoteAwsMacosSwiftBootstrap(
-  invocation: CommandInvocation,
-  facts: RunFacts,
-  providerName: string,
-  force = false,
-) {
-  if (!isAwsMacosRemoteTarget(invocation.args, providerName) || (!force && !facts.swift)) {
-    return invocation.args;
-  }
-
-  if (invocation.start < 0) {
-    return invocation.args;
-  }
-
-  return replaceRunCommandWithShell(
-    invocation,
-    `${remoteAwsMacosSwiftBootstrap()} && { ${renderRunShellCommand(invocation)}\n}`,
-  );
-}
-
 function replaceRunScript(invocation: CommandInvocation, scriptPath: string) {
   const normalizedArgs = invocation.args.slice(0, invocation.optionEnd);
   // One generated file replaces all valid source flags: a later empty file or
@@ -3314,32 +3199,25 @@ function wrapRemoteScript(script: string, bootstrap: string) {
 }
 
 function remoteAwsMacosScriptBootstrap(requirements: AwsMacosScriptRequirements) {
-  const bootstraps = [remoteAwsMacosJsBootstrap(requirements)];
-  if (requirements.swift) {
-    bootstraps.push(remoteAwsMacosSwiftBootstrap());
-  }
-  return bootstraps.join(" && ");
+  return remoteAwsMacosJsBootstrap(requirements);
 }
 
 function awsMacosScriptBootstrapRequirements(script: string) {
-  const requirements = { packageManager: false, bun: false, swift: false };
+  const requirements = { packageManager: false, bun: false };
   const firstLine = script.match(/^[^\r\n]*/u)?.[0] ?? "";
   if (firstLine.startsWith("#!")) {
     const words = firstLine.slice(2).trim().split(/\s+/u).filter(Boolean);
     requirements.packageManager = commandWordsNeedEntrypoint(words, awsMacosCorepackEntrypoints);
     requirements.bun = commandWordsNeedEntrypoint(words, awsMacosBunEntrypoints);
-    requirements.swift = commandWordsNeedAwsMacosSwiftToolchain(words);
     if (commandWordsShellEntrypoint(words)) {
       const body = script.slice(firstLine.length).replace(/^\r?\n/u, "");
       requirements.packageManager ||= commandNeedsAwsMacosPackageManager([body]);
       requirements.bun ||= commandNeedsAwsMacosBun([body]);
-      requirements.swift ||= commandNeedsAwsMacosSwiftToolchain([body]);
     }
     return requirements;
   }
   requirements.packageManager = commandNeedsAwsMacosPackageManager([script]);
   requirements.bun = commandNeedsAwsMacosBun([script]);
-  requirements.swift = commandNeedsAwsMacosSwiftToolchain([script]);
   return requirements;
 }
 
@@ -3739,13 +3617,6 @@ async function applyRunTransforms(
       facts,
       options.provider,
       sourceBootstrap,
-    );
-    invocation = parseCommandInvocation(help.text, transformedArgs);
-    transformedArgs = injectRemoteAwsMacosSwiftBootstrap(
-      invocation,
-      facts,
-      options.provider,
-      facts.swift,
     );
     invocation = parseCommandInvocation(help.text, transformedArgs);
     transformedArgs = injectRemoteWindowsHydratedNodeModulesBootstrap(

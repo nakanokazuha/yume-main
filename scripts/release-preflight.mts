@@ -1,11 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { coerceErrorMessage as formatError } from "./lib/error-format.mts";
 import { runManagedCommand } from "./lib/managed-child-process.mts";
-import { parseReleaseVersion } from "./lib/release-version.mjs";
-
-const macosInfoPlistPath = "apps/macos/Sources/OpenClaw/Resources/Info.plist";
 type Command = { args: string[]; bin: string };
 const SCOPES = ["all", "config", "dependencies", "plugin-sdk", "plugins", "version"] as const;
 type Scope = (typeof SCOPES)[number];
@@ -107,33 +102,11 @@ const releaseTasks: ReleaseTask[] = [
     fix: pnpmCommand("ui:i18n:sync"),
     check: pnpmCommand("ui:i18n:check"),
   },
-  {
-    id: "native-app-i18n",
-    name: "native app generated locale artifacts",
-    scopes: ["version"],
-    check: pnpmCommand("native:i18n:check"),
-  },
 ];
 const selectedTasks = releaseTasks.filter(
   (task) =>
     parsedArgs.scopes.has("all") || task.scopes.some((scope) => parsedArgs.scopes.has(scope)),
 );
-const shouldCheckMacosVersions = parsedArgs.scopes.has("all") || parsedArgs.scopes.has("version");
-
-// Release-evidence reuse validates version-stamp targets without running any
-// package-manager commands; keep this mode dependency-free file reads only.
-if (parsedArgs.macosVersionsOnly) {
-  const errors = collectMacosVersionErrors();
-  if (errors.length !== 0) {
-    for (const error of errors) {
-      console.error(`[release-preflight] macOS app version metadata: ${error}`);
-    }
-    process.exit(1);
-  }
-  console.log("[release-preflight] macOS app version metadata OK");
-  process.exit(0);
-}
-
 if (parsedArgs.fix) {
   console.log(
     `[release-preflight] refreshing generated release artifacts (${formatScopes(parsedArgs.scopes)}, jobs=${parsedArgs.jobs})`,
@@ -154,99 +127,20 @@ if (parsedArgs.fix) {
 console.log(
   `[release-preflight] checking release generated artifacts and manifests (${formatScopes(parsedArgs.scopes)}, jobs=${parsedArgs.jobs})`,
 );
-const macosVersionErrors: string[] = [];
-if (shouldCheckMacosVersions) {
-  console.log("\n[release-preflight] macOS app version metadata");
-  macosVersionErrors.push(...collectMacosVersionErrors());
-  if (macosVersionErrors.length === 0) {
-    console.log("[release-preflight] macOS app version metadata OK");
-  }
-}
 const { failed: checkFailures } = await runTaskGraph({
   commandKey: "check",
   jobs: parsedArgs.jobs,
   tasks: selectedTasks,
 });
-if (macosVersionErrors.length !== 0 || checkFailures.length !== 0) {
+if (checkFailures.length !== 0) {
   console.error("\nrelease preflight found drift:");
-  for (const error of macosVersionErrors) {
-    console.error(`- macOS app version metadata: ${error}`);
-  }
   printCommandFailures(checkFailures);
   console.error(
-    "\nCorrect manual version metadata first. Run `pnpm release:prep` for intentional generated version/config changes, then commit the resulting files. If native locale artifacts lag, wait for or dispatch Native App Locale Refresh before freezing the release SHA.",
+    "\nRun `pnpm release:prep` for intentional generated version/config changes, then commit the resulting files.",
   );
   process.exit(1);
 }
 console.log("[release-preflight] OK");
-
-function collectMacosVersionErrors(rootDir = resolve(".")): string[] {
-  const packageJsonPath = resolve(rootDir, "package.json");
-  const infoPlistPath = resolve(rootDir, macosInfoPlistPath);
-  let packageVersion: string;
-  let infoPlist: string;
-
-  try {
-    const parsedPackage = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-    packageVersion = typeof parsedPackage.version === "string" ? parsedPackage.version.trim() : "";
-  } catch (error) {
-    return [`unable to read package.json: ${formatError(error)}`];
-  }
-
-  const releaseVersion = parseReleaseVersion(packageVersion);
-  if (!releaseVersion) {
-    return [`package.json has invalid release version ${JSON.stringify(packageVersion)}`];
-  }
-
-  try {
-    infoPlist = readFileSync(infoPlistPath, "utf8");
-  } catch (error) {
-    return [`unable to read ${macosInfoPlistPath}: ${formatError(error)}`];
-  }
-
-  const errors: string[] = [];
-  // The source plist tracks native base metadata. Packaging stamps the exact
-  // prerelease version and canonical Sparkle build into the copied app bundle.
-  const expectedShortVersion = releaseVersion.baseVersion;
-  const expectedBuildVersion = [
-    String(releaseVersion.year),
-    String(releaseVersion.month).padStart(2, "0"),
-    String(releaseVersion.patch).padStart(2, "0"),
-    "00",
-  ].join("");
-  const shortVersion = readPlistString(infoPlist, "CFBundleShortVersionString");
-  const buildVersion = readPlistString(infoPlist, "CFBundleVersion");
-
-  if (shortVersion.error) {
-    errors.push(shortVersion.error);
-  } else if (shortVersion.value !== expectedShortVersion) {
-    errors.push(
-      `${macosInfoPlistPath} CFBundleShortVersionString is ${JSON.stringify(shortVersion.value)}; expected ${JSON.stringify(expectedShortVersion)} from package.json base version`,
-    );
-  }
-
-  if (buildVersion.error) {
-    errors.push(buildVersion.error);
-  } else if (buildVersion.value !== expectedBuildVersion) {
-    errors.push(
-      `${macosInfoPlistPath} CFBundleVersion is ${JSON.stringify(buildVersion.value)}; expected ${JSON.stringify(expectedBuildVersion)} for ${expectedShortVersion}`,
-    );
-  }
-
-  return errors;
-}
-
-function readPlistString(infoPlist: string, key: string) {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`<key>\\s*${escapedKey}\\s*</key>\\s*<string>([^<]*)</string>`, "gu");
-  const matches = [...infoPlist.matchAll(pattern)];
-  if (matches.length !== 1) {
-    return {
-      error: `${macosInfoPlistPath} must contain exactly one string value for ${key}; found ${matches.length}`,
-    };
-  }
-  return { value: matches[0]![1]?.trim() ?? "" };
-}
 
 async function runTaskGraph({
   commandKey,
@@ -361,7 +255,6 @@ function parseArgs(argv: string[]) {
   let check = false;
   let jobs = parseJobs(process.env.OPENCLAW_RELEASE_PREFLIGHT_JOBS ?? "4");
   let wantsFix = false;
-  let macosVersionsOnly = false;
   const scopes = new Set<Scope>();
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -375,10 +268,6 @@ function parseArgs(argv: string[]) {
     }
     if (arg === "--fix") {
       wantsFix = true;
-      continue;
-    }
-    if (arg === "--macos-versions-only") {
-      macosVersionsOnly = true;
       continue;
     }
     if (arg === "--jobs") {
@@ -405,25 +294,16 @@ function parseArgs(argv: string[]) {
     console.error("Use either --fix or --check, not both.");
     process.exit(1);
   }
-  if (macosVersionsOnly && (wantsFix || check)) {
-    console.error("Use --macos-versions-only without --fix or --check.");
-    process.exit(1);
-  }
-  if (macosVersionsOnly && scopes.size !== 0) {
-    console.error("Use --macos-versions-only without --scope.");
-    process.exit(1);
-  }
   if (scopes.size === 0) {
     scopes.add("all");
   }
-  return { fix: wantsFix, jobs, macosVersionsOnly, scopes };
+  return { fix: wantsFix, jobs, scopes };
 }
 
 function printUsage(writeLine: (line: string) => void): void {
   writeLine(
     "Usage: node scripts/release-preflight.mjs [--check|--fix] [--scope name] [--jobs count]",
   );
-  writeLine("       node scripts/release-preflight.mjs --macos-versions-only");
   writeLine("");
   writeLine("  --check       verify generated release artifacts without writing changes (default)");
   writeLine("  --fix         refresh generated release artifacts, then verify them");
@@ -431,7 +311,6 @@ function printUsage(writeLine: (line: string) => void): void {
     "  --scope name  all, version, dependencies, plugins, config, or plugin-sdk; repeatable",
   );
   writeLine("  --jobs count  maximum concurrent commands (default: 4)");
-  writeLine("  --macos-versions-only  verify macOS source version metadata only, no commands");
 }
 
 function readOptionValue(argv: string[], index: number, flag: string): string {

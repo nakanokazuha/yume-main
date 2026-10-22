@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { expect, it } from "vitest";
-import SHARED_TOOL_DISPLAY_JSON from "../../../../apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json" with { type: "json" };
+import SHARED_TOOL_DISPLAY_JSON from "./tool-display.json" with { type: "json" };
 import { icons } from "../../components/icons.ts";
 
 it("can render every shared tool icon, including the fallback", () => {

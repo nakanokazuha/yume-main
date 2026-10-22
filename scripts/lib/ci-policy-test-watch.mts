@@ -16,17 +16,6 @@ type PolicyTestWatch = {
 // this inventory covers the remaining tests that changed targeting cannot
 // discover from imports alone.
 const policyTestWatches: readonly PolicyTestWatch[] = [
-  {
-    testFile: "test/scripts/ios-lifecycle-workflow.test.ts",
-    watchGlobs: [
-      ".github/workflows/ci.yml",
-      "scripts/lib/ci-ios-smoke-plan.mjs",
-      "apps/ios/project.yml",
-      "apps/ios/Tests/**",
-      "apps/macos/Tests/OpenClawIPCTests/GatewayWebSocketTestSupport.swift",
-      "apps/shared/OpenClawKit/Tests/OpenClawKitTests/NativeGatewayWebSocketFixture.swift",
-    ],
-  },
   // Browser-served route owners are not imports of the Playwright entry point.
   ...UI_E2E_OWNER_WATCHES.map(({ testFile, watchGlobs }): PolicyTestWatch => ({
     testFile,
@@ -1930,14 +1919,6 @@ const policyTestWatches: readonly PolicyTestWatch[] = [
     testFile,
     watchGlobs: ["scripts/e2e/lib/upgrade-survivor/**"],
   })),
-  ...["test/scripts/android-app-i18n.test.ts", "test/scripts/apple-app-i18n.test.ts"].map(
-    (testFile): PolicyTestWatch => ({
-      // Both suites read this inventory by filename, not through the import graph.
-      testFile,
-      ownerGlobs: ["apps/.i18n/native-source.json"],
-      watchGlobs: ["apps/.i18n/native-source.json"],
-    }),
-  ),
   {
     testFile: "test/scripts/tsgo-core-test-shards.test.ts",
     watchGlobs: [

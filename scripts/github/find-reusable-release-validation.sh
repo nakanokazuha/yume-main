@@ -29,7 +29,6 @@ REPO_DIR="."
 MAX_CANDIDATES=12
 GITHUB_OUTPUT_FILE="${GITHUB_OUTPUT:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PREFLIGHT="${SCRIPT_DIR}/../release-preflight.mjs"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 VALIDATOR="${OPENCLAW_RELEASE_CI_SUMMARY_VALIDATOR:-${REPO_ROOT}/scripts/release-ci-summary.mjs}"
 
@@ -257,12 +256,6 @@ elif [[ "$TRUSTED_WORKFLOW_REF" =~ ^release-publish/([0-9a-f]{12})-[1-9][0-9]*$ 
   trusted_workflow_route="protected-tag"
 else
   no_reuse "trusted workflow identity is not main or an exact protected tag"
-fi
-
-# Exact-target reuse still requires internally consistent version stamps
-# (for example package.json must agree with the macOS plist).
-if ! (cd "$REPO_DIR" && env -u NODE_OPTIONS node "$PREFLIGHT" --macos-versions-only >&2); then
-  no_reuse "target version metadata is inconsistent"
 fi
 
 runs_json=""

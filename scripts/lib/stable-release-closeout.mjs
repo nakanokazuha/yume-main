@@ -233,7 +233,6 @@ export function verifyStableMainCloseout(params) {
   ];
   const platformAssets = {
     macos: expectedMacAssets,
-    android: ["OpenClaw-Android-SHA256SUMS.txt", "OpenClaw-Android.apk"],
     windows: [
       "OpenClawCompanion-SHA256SUMS.txt",
       "OpenClawCompanion-Setup-arm64.exe",

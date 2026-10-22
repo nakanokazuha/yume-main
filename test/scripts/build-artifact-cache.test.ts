@@ -281,15 +281,15 @@ describe("native owner content records", () => {
     expect(f.matches(record)).toBe(false);
   });
 
-  it("keeps a compiled generation warm across native app scratch creation and removal", () => {
+  it("keeps a compiled generation warm across root scratch creation and removal", () => {
     const f = fixture(false, "dist", roots, "compiler");
     const record = f.seal(f.prepare());
     const matches = () => f.matches(record);
     expect(matches()).toBe(true);
-    f.write("apps/macos/.build/arm64/release/description.json", "{}");
-    f.write("apps/macos/.build/arm64/checkouts/library/package.json", "{}");
+    f.write(".tmp/tauri-build/arm64/release/description.json", "{}");
+    f.write(".tmp/tauri-build/arm64/checkouts/library/package.json", "{}");
     expect(matches()).toBe(true);
-    fs.rmSync(path.join(f.root, "apps/macos/.build"), { recursive: true });
+    fs.rmSync(path.join(f.root, ".tmp/tauri-build"), { recursive: true });
     expect(matches()).toBe(true);
     f.write("nested/value.ts", "export const value = 2;");
     expect(matches()).toBe(false);

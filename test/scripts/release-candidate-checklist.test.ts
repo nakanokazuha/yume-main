@@ -239,8 +239,6 @@ describe("release candidate checklist", () => {
 
   type QualificationCase = {
     tag?: string;
-    pin?: string;
-    expected?: "passed" | "warning";
     failedRegistry?: string;
     launch?: "fresh" | "npm-only" | "reuse" | "saved-full" | "saved-npm" | "mismatch";
     distTag?: string;
@@ -277,70 +275,55 @@ describe("release candidate checklist", () => {
     },
     { workflowSha: "b".repeat(40) },
     { workflowSha: "c".repeat(40) },
-    { pin: "2026.7.4", expected: "warning" },
     { failedRegistry: "npm", registryAdmission: true },
     { launch: "reuse", registryAdmission: true },
     {
       tag: "v2026.9.1",
-      pin: "2026.9.1",
-      expected: "passed",
       launch: "npm-only",
       retainedHelperRequest: true,
     },
     {
       tag: "v2026.9.1",
-      pin: "2026.9.1",
-      expected: "passed",
       workflowSha: "b".repeat(40),
       savedToolingTag: "release-publish/bbbbbbbbbbbb-100",
     },
     ...["normal", "prepared"].map<QualificationCase>((publicationRoute) => ({
       tag: "v2026.9.1",
-      pin: "2026.9.1",
-      expected: "passed",
       publicationRoute,
       workflowSha: "b".repeat(40),
     })),
-    { tag: "v2026.9.1", pin: "2026.9.1", workflowSha: "c".repeat(40) },
-    { tag: "v2026.9.1", pin: "2026.7.4", expected: "warning", failedRegistry: "" },
-    { tag: "v2026.9.1-1", pin: "2026.9.1", expected: "passed", failedRegistry: "" },
-    { tag: "v2026.9.1-beta.1", pin: "2026.7.4", expected: undefined, failedRegistry: "" },
+    { tag: "v2026.9.1", workflowSha: "c".repeat(40) },
+    { tag: "v2026.9.1", failedRegistry: "" },
+    { tag: "v2026.9.1-1", failedRegistry: "" },
+    { tag: "v2026.9.1-beta.1", failedRegistry: "" },
     ...["npm", "clawhub"].map<QualificationCase>((failedRegistry) => ({
       tag: "v2026.9.1",
-      pin: "2026.9.1",
-      expected: "passed",
       failedRegistry,
       registryAdmission: true,
     })),
     ...(["npm-only", "reuse"] as const).map<QualificationCase>((launch) => ({
       tag: "v2026.9.1",
-      pin: "2026.9.1",
-      expected: "passed",
       launch,
       registryAdmission: true,
     })),
     {
       tag: "v2026.9.1",
-      pin: "2026.9.1",
       launch: "fresh",
       distTag: "extended-stable",
       routingError: "Fresh extended-stable checklist launches are not supported",
     },
     {
       tag: "v2026.9.33",
-      pin: "2026.9.33",
       launch: "saved-npm",
       routingError: "Fresh extended-stable checklist launches are not supported",
     },
     {
       tag: "v2026.9.33-1",
-      pin: "2026.9.33",
       launch: "fresh",
       routingError: "Extended-stable correction suffixes are invalid",
     },
     ...(["saved-full", "mismatch"] as const).map<QualificationCase>((launch) => ({
       tag: "v2026.9.33",
-      pin: "2026.9.33",
       launch,
       distTag: "extended-stable",
       stopAtRegistry: true,
@@ -356,8 +339,6 @@ describe("release candidate checklist", () => {
     "qualifies candidate %j",
     async ({
       tag = "v2026.9.1",
-      pin = "2026.9.1",
-      expected = "passed",
       failedRegistry,
       launch,
       distTag,
@@ -375,15 +356,9 @@ describe("release candidate checklist", () => {
     }) => {
       const { root: targetRoot, git } = candidateGitFixture({
         "package.json": JSON.stringify({ version: tag.slice(1) }),
-        "apps/android/version.json": JSON.stringify({ version: pin, versionCode: 2026070401 }),
         "CHANGELOG.md": "# Fixture changelog\n\n## 2026.9.1\n\nFixture notes.\n",
       });
       const targetSha = git("rev-parse", "HEAD");
-      // The target ref is authoritative even if another checkout has prepared a newer pin.
-      writeFileSync(
-        join(targetRoot, "apps/android/version.json"),
-        JSON.stringify({ version: "2099.1.1" }),
-      );
       const candidateArgv = [
         "--tag",
         tag,
@@ -423,8 +398,6 @@ describe("release candidate checklist", () => {
       const main = source.match(/^async function main\(\)[\s\S]*?^\}/mu)?.[0];
       const helperDispatch =
         source.match(/^function dispatchFullReleaseUsingHelper\([\s\S]*?^\}/mu)?.[0] ?? "";
-      const android =
-        source.match(/^function checkCandidateAndroidVersion\([\s\S]*?^\}/mu)?.[0] ?? "";
       const selectPublication =
         source.match(/^function publicationSelectionForChecklist\([\s\S]*?^\}/mu)?.[0] ?? "";
       const savedTagReader =
@@ -557,7 +530,7 @@ describe("release candidate checklist", () => {
       const dispatches: string[][] = [];
       const completion = runInNewContext(
         stripNodeTypeScriptTypes(
-          `${android}\n${selectPublication}\n${savedTagReader}\n${helperDispatch}\n${shellQuote}\n${main}\nmain();`,
+          `${selectPublication}\n${savedTagReader}\n${helperDispatch}\n${shellQuote}\n${main}\nmain();`,
         ),
         {
           process: {
@@ -930,29 +903,6 @@ describe("release candidate checklist", () => {
           ? "openclaw-release-prepare.yml"
           : "openclaw-release-publish.yml",
       );
-      if (tag.includes("-beta.")) {
-        expect(evidence.androidVersionCheck).toBeUndefined();
-        expect(summary).not.toContain("Android version");
-        return;
-      }
-      expect(evidence.androidVersionCheck).toMatchObject({
-        status: expected,
-        androidVersion: pin,
-        targetVersion: "2026.9.1",
-      });
-      const message = evidence.androidVersionCheck.message;
-      expect(message).toContain(
-        expected === "warning" ? "WARNING: Android version" : "PASS: Android version",
-      );
-      expect(summary).toContain(message);
-      expect(output).toContain(message);
-      if (expected === "warning") {
-        expect(message).toContain("2026.7.4");
-        expect(message).toContain(
-          "scripts/android-pin-version.ts --version 2026.9.1 before tagging",
-        );
-        expect(message).toContain("or accept that Android will not ship for this release");
-      }
     },
   );
 

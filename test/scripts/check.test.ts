@@ -78,5 +78,12 @@ describe("scripts/check", () => {
       name: "script TypeScript erasability",
       args: ["check:script-erasability"],
     });
+    expect(PREFLIGHT_CHECKS.map(({ args }) => args[0])).not.toContain(
+      "check:host-env-policy:swift",
+    );
+    expect(PREFLIGHT_CHECKS.map(({ args }) => args[0])).not.toContain(
+      "check:browser-inspect-script:swift",
+    );
+    expect(PREFLIGHT_CHECKS.map(({ args }) => args[0])).not.toContain("native-catalogs:check");
   });
 });

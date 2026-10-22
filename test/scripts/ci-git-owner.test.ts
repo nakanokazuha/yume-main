@@ -506,7 +506,6 @@ it("materializes an executable preflight manifest from the workflow revision", a
     ".github/actions/git-owner/test-prerequisites.mjs",
     ".github/actions/git-owner/test-prerequisites.json",
     "scripts/ci-build-manifest.mjs",
-    "scripts/lib/ci-ios-smoke-plan.mjs",
     "scripts/lib/release-context.mjs",
     "scripts/lib/release-version.mjs",
   ]) {

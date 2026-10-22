@@ -361,7 +361,6 @@ const STRIPE_FILE_SECONDS_HINTS = new Map<string, number>([
   ["test/scripts/install-sh.test.ts", 6],
   ["test/scripts/kitchen-sink-rpc-walk.test.ts", 5],
   ["test/scripts/managed-child-process.test.ts", 42],
-  ["test/scripts/openclaw-live-updater.test.ts", 18],
   ["test/scripts/parallels-smoke-model.test.ts", 8],
   ["test/scripts/plugin-clawhub-release.test.ts", 5],
   ["test/scripts/plugin-gateway-gauntlet.test.ts", 5],

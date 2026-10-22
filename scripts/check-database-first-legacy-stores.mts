@@ -93,10 +93,6 @@ type BranchFsSafePropertyAssignment = {
 type BranchWrapperAssignment = { index: number; name: string; value: WrapperValue };
 
 const databaseFirstLegacyStoreSourceRoots = ["src", "extensions", "packages"];
-const databaseFirstNativeSourceRoots = ["apps/macos/Sources/OpenClaw"];
-const nativeLegacyPortGuardianMigrationPath =
-  "apps/macos/Sources/OpenClaw/PortGuardianRecordStore.swift";
-const nativeLegacyPortGuardianFilenamePattern = /\bport-guard\.(?:json|lock)\b/u;
 const unknownComputedPropertyName = "\0";
 
 const legacyWriteCallees = new Set([
@@ -394,26 +390,6 @@ function collectSourceFiles(targetPath: string) {
 
 export async function collectDatabaseFirstLegacyStoreSourceFiles(sourceRoots: string[]) {
   return (await Promise.all(sourceRoots.map((root) => collectSourceFiles(root)))).flat();
-}
-
-function collectNativeSourceFiles(targetPath: string) {
-  return collectFiles(targetPath, (filePath) => path.extname(filePath) === ".swift");
-}
-
-export function collectDatabaseFirstNativeLegacyStoreViolations(
-  content: string,
-  relativePath: string,
-): LegacyStoreViolation[] {
-  if (relativePath === nativeLegacyPortGuardianMigrationPath) {
-    return [];
-  }
-  return content
-    .split("\n")
-    .flatMap((line, index) =>
-      nativeLegacyPortGuardianFilenamePattern.test(line)
-        ? [{ kind: "legacy PortGuardian file reference", line: index + 1 }]
-        : [],
-    );
 }
 
 function importSource(node: ts.ImportDeclaration) {
@@ -4022,10 +3998,7 @@ export async function main() {
   using parser = createNativeTypeScriptParser({ cwd: repoRoot });
   const sourceRoots = databaseFirstLegacyStoreSourceRoots.map((root) => path.join(repoRoot, root));
   const files = await collectDatabaseFirstLegacyStoreSourceFiles(sourceRoots);
-  const nativeSourceRoots = databaseFirstNativeSourceRoots.map((root) => path.join(repoRoot, root));
-  const nativeFiles = (await Promise.all(nativeSourceRoots.map(collectNativeSourceFiles))).flat();
   const violations = [];
-  // Amortize native root reloads while releasing syntax trees after each batch.
   const batchSize = 32;
   for (let offset = 0; offset < files.length; offset += batchSize) {
     const sources: Array<{ fileName: string; text: string }> = [];
@@ -4044,17 +4017,6 @@ export async function main() {
       }
     }
   }
-  for (const filePath of nativeFiles) {
-    const relativePath = path.relative(repoRoot, filePath).replaceAll(path.sep, "/");
-    const content = await fs.readFile(filePath, "utf8");
-    for (const violation of collectDatabaseFirstNativeLegacyStoreViolations(
-      content,
-      relativePath,
-    )) {
-      violations.push(`${relativePath}:${violation.line} ${violation.kind}`);
-    }
-  }
-
   if (violations.length === 0) {
     console.log("Database-first legacy-store guard passed.");
     return;

@@ -61,7 +61,7 @@ const ROOT_TEST_ENTRY_GLOBS = [
   "src/plugins/plugin-module-generation.bun.test-support.ts!",
   // The plugin artifact suite launches these Node tests with the native tooling preload.
   "src/cli/plugins-feature-artifact.native.test-support.ts!",
-  // ExecHostTransportProofTests.swift launches this isolated native client by path.
+  // ExecHostTransportProofTests launches this isolated native client by path.
   "src/infra/exec-host.native.test-support.ts!",
   // Generated handoff preload and resolver shims import this helper by URL.
   "test/helpers/managed-handoff-isolation.ts!",
@@ -133,7 +133,6 @@ const workspaces = Object.fromEntries(
       entry: [
         ...settings.entry,
         // Native builds load this private entry through the generator's temporary bundle.
-        ...(workspace === "packages/gateway-protocol" ? ["scripts/native-codegen.ts!"] : []),
         // Compiler registries emit entry modules, including declarations
         // imported by generated child scripts. Keep workspace-relative entries.
         ...[

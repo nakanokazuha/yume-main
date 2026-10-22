@@ -144,23 +144,8 @@ function commitFile(repo: string, filePath: string, content: string, message: st
   return git(repo, ["rev-parse", "HEAD"]);
 }
 
-function plistFor(shortVersion: string, buildVersion: string): string {
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<plist version="1.0">',
-    "<dict>",
-    "    <key>CFBundleShortVersionString</key>",
-    `    <string>${shortVersion}</string>`,
-    "    <key>CFBundleVersion</key>",
-    `    <string>${buildVersion}</string>`,
-    "</dict>",
-    "</plist>",
-    "",
-  ].join("\n");
-}
-
 function createRepo(
-  options: { plistBuildVersion?: string; version?: string } = {},
+  options: { version?: string } = {},
   dirs = tempDirs,
 ) {
   const origin = dirs.make("evidence-reuse-origin-");
@@ -171,11 +156,6 @@ function createRepo(
   writeFileSync(
     join(origin, "package.json"),
     `${JSON.stringify({ name: "x", version: options.version ?? "2026.7.1" }, null, 2)}\n`,
-  );
-  mkdirSync(join(origin, "apps/macos/Sources/OpenClaw/Resources"), { recursive: true });
-  writeFileSync(
-    join(origin, "apps/macos/Sources/OpenClaw/Resources/Info.plist"),
-    plistFor("2026.7.1", options.plistBuildVersion ?? "2026070100"),
   );
   mkdirSync(join(origin, "docs/install"), { recursive: true });
   writeFileSync(join(origin, "docs/install/updating.md"), "# Updating\n");
@@ -1298,23 +1278,6 @@ describe("scripts/github/find-reusable-release-validation.sh", () => {
     expect(result.status).toBe(0);
     expect(parseOutput(result.stdout)).toMatchObject({ reuse: "false" });
     expect(result.stderr).toContain("is not a CHANGELOG.md-only descendant");
-  });
-
-  it("rejects target version metadata that is internally inconsistent", () => {
-    const { origin, priorSha } = createRepo({ plistBuildVersion: "2026061000" });
-    const clone = cloneHead(origin);
-    const record = normalizedEvidence({ targetSha: priorSha });
-
-    const result = resolveEvidence(record, {
-      repoDir: clone,
-      targetSha: priorSha,
-    });
-
-    expect(result.status).toBe(0);
-    expect(parseOutput(result.stdout)).toMatchObject({
-      reuse: "false",
-      reuse_reason: "target version metadata is inconsistent",
-    });
   });
 
   it.each([

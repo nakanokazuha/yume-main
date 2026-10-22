@@ -33,7 +33,7 @@ const repositoryScriptEntries = [
   "scripts/ci-build-manifest.mjs!",
   // CI security-fast runs this from its trusted harness checkout.
   "scripts/ci-production-audit.mjs!",
-  // tsdown builds this private macOS app worker protocol entry by path.
+  // tsdown builds the host worker protocol entry by path.
   "src/node-host/mac-worker-entry.ts!",
   // CI imports this selector from its trusted harness inside an inline Node script.
   ".github/actions/git-owner/test-prerequisites.mjs!",
@@ -48,15 +48,10 @@ const repositoryScriptEntries = [
   ".github/actions/setup-node-env/seed-bun-from-image.mjs!",
   // setup-pnpm-store-cache invokes this helper from composite-action YAML.
   ".github/actions/setup-pnpm-store-cache/seed-pnpm-from-image.mjs!",
-  "apps/android/scripts/build-release-artifacts.ts!",
   "scripts/bundle-a2ui.mts!",
   "scripts/build-discord-activity-sdk.mts!",
   // Plugin package asset hooks invoke the browser builder by path.
   "scripts/build-plugin-control-ui.mts!",
-  // package-mac-app.sh launches the architecture scheduler by path.
-  "scripts/build-mac-swift.mts!",
-  // CI passes this native test launcher through the Apple command log wrapper.
-  "scripts/test-macos-native.mts!",
   "scripts/check-control-ui-performance.mts!",
   "scripts/check-control-ui-precompressed-assets.mts!",
   "scripts/check-package-dist-imports.mjs!",
@@ -67,10 +62,8 @@ const repositoryScriptEntries = [
   "scripts/vitest-pair-benchmark.mts!",
   // Cloudflare deployment template: wrangler bundles the Worker from this entry.
   "scripts/cloudflare/src/index.ts!",
-  // Invoked by the documented Gateway and macOS Computer Use live-proof commands.
+  // Invoked by the documented Gateway live-proof command.
   "scripts/dev/computer-use-gateway-live-proof.ts!",
-  "scripts/dev/computer-use-macos-live-proof.ts!",
-  "scripts/dev/ios-node-e2e.ts!",
   "scripts/diffs-shiki-curated.ts!",
   // The Doctor migration guide invokes this source-checkout replay by path.
   "scripts/doctor-config-upgrade-replay.mjs!",
@@ -182,19 +175,10 @@ const repositoryScriptEntries = [
   "scripts/embedded-run-abort-leak.ts!",
   "scripts/embedded-run-liveness-leak.ts!",
   "scripts/fixtures/packed-plugin-sdk-type-smoke.ts!",
-  // Generates the native browser page scripts from their UI source modules.
-  "scripts/generate-browser-inspect-script-swift.mts!",
   // The diagnostics guide invokes the sustained Gateway heap rig by path.
   "scripts/gateway-heap-rig.mjs!",
   // The diagnostics guide invokes this offline snapshot comparison CLI by path.
   "scripts/heap-snapshot-diff.mjs!",
-  // CI executes screenshot evidence from the workflow-owned harness copy.
-  "scripts/ios-screenshot-evidence.mjs!",
-  "scripts/ios-release-cut.ts!",
-  "scripts/ios-release-plan.ts!",
-  // Android Fastlane invokes this planner and its pre-upload validation by path.
-  "scripts/android-release-plan.ts!",
-  "scripts/ios-release-signing.mts!",
   "scripts/lib/docker-plugin-selection.mjs!",
   // The frozen compatibility shell invokes the source CLI and imports trusted tooling.
   "scripts/lib/frozen-target-source.mjs!",
@@ -257,8 +241,6 @@ const repositoryScriptEntries = [
   "scripts/resolve-frozen-codex-live-suite.mjs!",
   // Changed-file checks invoke this targeted UI Stylelint entrypoint by path.
   "scripts/run-stylelint.mts!",
-  // lint-swift.sh launches the SwiftLint policy wrapper by absolute path.
-  "scripts/run-swiftlint.mts",
   // Path-spawned test roots are development entries; `!` would audit dev tools as production.
   "scripts/run-vitest-child.mts",
   // The isolated Vitest adapter executes this entry by path inside its container.
@@ -271,14 +253,9 @@ const repositoryScriptEntries = [
   "scripts/test-built-bundled-channel-entry-smoke.mts!",
   // CI launches the desktop resize proof through its bootstrap path.
   "scripts/test-desktop-resize-real.mts!",
-  // Native shell UI tests connect to this manually launched loopback Gateway fixture.
-  "scripts/test-ios-shell-gateway.mjs!",
-  "scripts/test-ios-sidebar-attention-gateway.mjs!",
   "scripts/update-clawtributors.ts!",
   // The candidate binder invokes this trusted producer-identity verifier by path.
   "scripts/verify-full-release-producer-job.mjs!",
-  // Staging and signed-app packaging execute this verifier with each bundled Bun.
-  "scripts/verify-mac-runtime.mjs!",
   "scripts/verify-stable-main-closeout.mjs!",
   "scripts/write-package-dist-inventory.ts!",
   "scripts/write-plugin-sdk-entry-dts.ts!",
@@ -496,9 +473,6 @@ const rootEntries = [
   "src/commands/doctor/shared/deprecation-compat.ts!",
   // Compiled as the package-boundary failure canary by the extension checker.
   "src/plugins/contracts/rootdir-boundary-canary.ts!",
-  // Native applications load these JavaScript assets directly rather than through Node imports.
-  "apps/android/app/src/main/assets/katex/katex.min.js!",
-  "apps/android/app/src/main/assets/katex/renderer.js!",
   "apps/linux/ui/main.js!",
   "apps/linux/ui/quickchat.js!",
   // The native window-chrome owner injects this script through Rust include_str!.
@@ -630,17 +604,6 @@ function workspacePackage(packageDir: string, extraEntries: readonly string[] = 
   } as const;
 }
 
-function compileNativeProtocolConsumer(source: string, filePath: string): string {
-  if (path.resolve(filePath) !== path.resolve("scripts/prepare-native-protocol.mjs")) {
-    return source;
-  }
-  // The temporary esbuild bundle exports this source module's unchanged API.
-  return source.replace(
-    "import(pathToFileURL(bundlePath).href)",
-    'import("../packages/gateway-protocol/scripts/native-codegen.ts")',
-  );
-}
-
 function bundledPluginWorkspace(extraEntries: readonly string[] = []) {
   return {
     entry: [...bundledPluginEntries, ...extraEntries],
@@ -710,7 +673,6 @@ const config = {
   compilers: {
     yml: compileWorkflowConsumers,
     sh: compileShellConsumers,
-    mjs: compileNativeProtocolConsumer,
   },
   ignoreFiles: [
     // Production mode excludes dev/maintainer executables. The full-tree
@@ -810,8 +772,6 @@ const config = {
         "open",
         "openclaw",
         "sleep",
-        "swiftlint",
-        "xcrun",
       ],
       // The stylelint config lives under config/, not a root default path.
       stylelint: { config: ["config/stylelint.config.mjs"] },

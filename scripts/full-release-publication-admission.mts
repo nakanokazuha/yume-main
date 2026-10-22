@@ -34,7 +34,7 @@ import { produceVerifiedReleaseInventory } from "./release-plan-producer.mts";
 
 const executionRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const metadataPath =
-  /^(?:package\.json|apps\/android\/version\.json|extensions\/[^/]+\/(?:package\.json|README\.md)|packages\/[^/]+\/package\.json)$/u;
+  /^(?:package\.json|extensions\/[^/]+\/(?:package\.json|README\.md)|packages\/[^/]+\/package\.json)$/u;
 const platformHelperPath = "scripts/lib/release-publish-children.sh";
 type Request = ReturnType<
   typeof import("./full-release-publication-contract.mjs").publicationSourceRequest
@@ -230,19 +230,6 @@ function projectSource(
     }
     if (platform.id === "windows") {
       return Boolean(selection.windowsNodeTag);
-    }
-    if (platform.id === "android") {
-      if (!selection.publishOpenclawNpm || train !== "stable") {
-        return false;
-      }
-      const pin = JSON.parse(
-        readFileSync(join(snapshot, "apps/android/version.json"), "utf8"),
-      )?.version;
-      // Match the publisher's exact pin syntax before comparing the parsed base.
-      if (typeof pin !== "string" || !/^[0-9]{4}\.([1-9]|1[0-2])\.[0-9]{1,3}$/u.test(pin)) {
-        throw new Error("apps/android/version.json must pin an exact YYYY.M.PATCH Android version");
-      }
-      return parsePinnedReleaseVersion(pin) === parsed.baseVersion;
     }
     if (extended) {
       return platform.id === "docker";

@@ -164,11 +164,9 @@ native WAL admission without a verification receipt while the verifier is runnin
 See [integrity admission and Doctor maintenance](/reference/database-schemas/integrity-and-recovery#integrity-checks)
 for the provenance requirements and operator-requested verification.
 
-Two mechanisms back that contract. CI runs
-`scripts/check-native-state-schema-version.mjs`, which fails the build when the
-Swift and TypeScript state-database contracts declare different schema versions.
-[`openclaw doctor --fix`](/cli/doctor) owns file-to-SQLite migrations and records a
-receipt for each one in the shared `migration_runs` and `migration_sources` tables.
+The TypeScript schema baseline is checked in CI. [`openclaw doctor --fix`](/cli/doctor)
+owns file-to-SQLite migrations and records a receipt for each one in the shared
+`migration_runs` and `migration_sources` tables.
 
 Execution step receipts are separate from these persisted import receipts.
 A step blocked by an earlier refusal includes optional `originatingRefusal`

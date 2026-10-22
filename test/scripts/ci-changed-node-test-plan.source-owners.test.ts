@@ -619,23 +619,23 @@ describe("CI changed Node test plan", () => {
     }
   });
 
-  it("keeps mixed native changes with concrete readers independently of native jobs", () => {
-    const swift = "apps/shared/OpenClawKit/Sources/OpenClawKit/Example.swift";
-    const android = "apps/android/app/src/main/java/Example.kt";
+  it("keeps desktop client changes with concrete readers in their source owner", () => {
+    const desktop = "apps/linux/src/main.rs";
+    const desktopManifest = "apps/linux/tauri.conf.json";
     const runtime = "src/example/runtime.ts";
     const runtimeConsumer = "src/example/runtime-consumer.test.ts";
-    const sourceReader = "src/example/native-source-reader.test.ts";
+    const sourceReader = "src/example/desktop-source-reader.test.ts";
     for (const withSourceReader of [false, true]) {
       const cwd = argvTempDirs.make("changed-native-consumers-");
       const files = {
-        [swift]: "struct Example {}\n",
-        [android]: "class Example\n",
+        [desktop]: "fn main() {}\n",
+        [desktopManifest]: "{}\n",
         [runtime]: "export const value = 1;\n",
         [runtimeConsumer]: 'import "./runtime.js";\n',
-        "apps/unknown/Example.swift": "struct Example {}\n",
+        "apps/unknown/Example.rs": "fn main() {}\n",
         ...(withSourceReader
           ? {
-              [sourceReader]: `import { readFileSync } from "node:fs";\nreadFileSync(new URL("../../${swift}", import.meta.url), "utf8");\n`,
+              [sourceReader]: `import { readFileSync } from "node:fs";\nreadFileSync(new URL("../../${desktop}", import.meta.url), "utf8");\n`,
             }
           : {}),
       };
@@ -654,17 +654,17 @@ describe("CI changed Node test plan", () => {
         gatewayCallsitesGuard,
         ...(withSourceReader ? [sourceReader] : []),
       ].toSorted();
-      const shards = createChangedNodeTestShards([swift, android, runtime], options);
+      const shards = createChangedNodeTestShards([desktop, desktopManifest, runtime], options);
       expect(shards, reasons.join("\n")).not.toBeNull();
       expect(selectedFiles(shards).toSorted()).toEqual(expected);
       expect(
         createChangedNodeTestShards(
-          [swift, android, runtime, "apps/unknown/Example.swift"],
+          [desktop, desktopManifest, runtime, "apps/unknown/Example.rs"],
           options,
         ),
       ).toEqual(shards);
       if (withSourceReader) {
-        const readerOwned = createChangedNodeTestShards([swift, runtime], { cwd });
+        const readerOwned = createChangedNodeTestShards([desktop, runtime], { cwd });
         expect(readerOwned).not.toBeNull();
         expect(selectedFiles(readerOwned).toSorted()).toEqual(expected);
       }

@@ -147,36 +147,18 @@ describe("hourly main CI admission", () => {
     expect(evaluate(ci.concurrency.group, manual)).not.toBe(
       evaluate(ci.concurrency.group, schedule),
     );
-    for (const surface of ["control_ui", "native"]) {
-      const output = ci.jobs.preflight.outputs["strict_" + surface + "_i18n"];
-      const strict = String(evaluate(output, manual));
-      const advisory = String(
-        evaluate(output, { ...schedule, steps: { changed_scope: { outputs: {} } } }),
-      );
-      expect(strict).toBe("true");
-      expect(advisory).not.toBe("true");
-      const parity = ci.jobs[surface === "native" ? "native-i18n" : "control-ui-i18n"].steps.find(
-        (step: { name?: string }) =>
-          step.name ===
-          (surface === "native"
-            ? "Check native app generated locale parity"
-            : "Check Control UI locale parity"),
-      );
-      for (const [context, value, manualStrict] of [
-        [manual, strict, true],
-        [schedule, advisory, false],
-      ] as const) {
-        const finalContext = {
-          ...context,
-          preflightOutputs: { ["strict_" + surface + "_i18n"]: value },
-        };
-        if (surface === "native") {
-          expect(evaluate(parity.if, finalContext)).toBe(manualStrict);
-        } else {
-          expect(evaluate(parity["continue-on-error"], finalContext)).toBe(!manualStrict);
-        }
-      }
-    }
+    const output = ci.jobs.preflight.outputs.strict_control_ui_i18n;
+    const strict = String(evaluate(output, manual));
+    const advisory = String(
+      evaluate(output, { ...schedule, steps: { changed_scope: { outputs: {} } } }),
+    );
+    expect(strict).toBe("true");
+    expect(advisory).not.toBe("true");
+    const parity = ci.jobs["control-ui-i18n"].steps.find(
+      (step: { name?: string }) => step.name === "Check Control UI locale parity",
+    );
+    expect(evaluate(parity["continue-on-error"], { ...manual, preflightOutputs: { strict_control_ui_i18n: strict } })).toBe(false);
+    expect(evaluate(parity["continue-on-error"], { ...schedule, preflightOutputs: { strict_control_ui_i18n: advisory } })).toBe(true);
   });
 
   it("isolates full manual CI from a later skip-only main push", () => {
@@ -218,43 +200,6 @@ describe("hourly main CI admission", () => {
     }
   });
 
-  it("serializes only scheduled iOS proof while admitting overlapping hourly runs", () => {
-    const scheduled = {
-      ...base,
-      eventName: "schedule",
-      workflow: "CI",
-      runId: 123,
-      matrix: { phase: "tests" },
-    } as const;
-    const next = { ...scheduled, runId: 124 };
-    const ios = ci.jobs["ios-build"];
-    expect(evaluate(ci.concurrency.group, scheduled)).not.toBe(
-      evaluate(ci.concurrency.group, next),
-    );
-    expect(evaluate(ios.concurrency.group, scheduled)).toBe(evaluate(ios.concurrency.group, next));
-    expect(ios.concurrency["cancel-in-progress"]).toBe(false);
-    // GitHub's default single pending slot replaces pending work, never the active proof.
-    expect(ios.concurrency.queue ?? "single").toBe("single");
-    const hourly = evaluate(ios.concurrency.group, scheduled);
-    for (const eventName of ["workflow_dispatch", "pull_request", "push"] as const) {
-      for (const releaseGate of [false, true]) {
-        const groups = [123, 124].flatMap((runId) =>
-          ["tests", "release", "smoke"].map((phase) =>
-            evaluate(ios.concurrency.group, {
-              ...scheduled,
-              eventName,
-              releaseGate,
-              runId,
-              matrix: { phase },
-            }),
-          ),
-        );
-        expect(new Set(groups).size).toBe(groups.length);
-        expect(groups).not.toContain(hourly);
-      }
-    }
-  });
-
   it("schedules complete main coverage at the workflow revision without a diff filter", () => {
     const childSha = "b".repeat(40);
     const context = {
@@ -273,7 +218,7 @@ describe("hourly main CI admission", () => {
     );
     for (const [key, expression] of Object.entries(manifest.env)) {
       if (
-        /^OPENCLAW_CI_RUN_(NODE|MACOS|MACOS_NODE|IOS_BUILD|ANDROID|WINDOWS|SKILLS_PYTHON|CONTROL_UI_I18N|UI_TESTS|NATIVE_I18N)$/.test(
+        /^OPENCLAW_CI_RUN_(NODE|MACOS|MACOS_NODE|WINDOWS|SKILLS_PYTHON|CONTROL_UI_I18N|UI_TESTS)$/.test(
           key,
         )
       ) {
@@ -283,8 +228,6 @@ describe("hourly main CI admission", () => {
     expect(evaluate(manifest.env.OPENCLAW_CI_DOCS_ONLY, context)).toBe("false");
     expect(evaluate(manifest.env.OPENCLAW_CI_DOCS_CHANGED, context)).toBe("true");
     expect(evaluate(manifest.env.OPENCLAW_CI_VALIDATION_TIER, context)).toBe("main");
-    expect(evaluate(ci.jobs.android.strategy["max-parallel"], context)).toBe(2);
-    expect(evaluate(ci.jobs["macos-swift"].env.OPENCLAWKIT_TEST_EXECUTION, context)).toBe("serial");
     for (const id of ["docs_scope", "changed_scope"]) {
       expect(
         evaluate(

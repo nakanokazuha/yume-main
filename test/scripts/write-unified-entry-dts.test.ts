@@ -18,6 +18,28 @@ import {
 const it = createDeclarationTest();
 
 describe("write-unified-entry-dts", () => {
+  it("treats the experimental Node 22 sqlite builtin as a runtime builtin", () => {
+    const root = process.cwd();
+    const readFileSync = fs.readFileSync.bind(fs);
+    const read = vi.spyOn(fs, "readFileSync").mockImplementation((file, options) => {
+      const contents = readFileSync(file, options);
+      return typeof contents === "string" && String(file).endsWith("numeric-options.mjs")
+        ? `${contents}\nimport { DatabaseSync } from "node:sqlite";\n`
+        : contents;
+    });
+    try {
+      const closure = resolveTsdownDeclarationGeneratorInputs(
+        root,
+        "scripts/write-unified-entry-dts.ts",
+      );
+      expect(closure.map((file) => path.relative(root, file))).toContain(
+        "scripts/lib/tsdown-declaration-generator-inputs.mts",
+      );
+    } finally {
+      read.mockRestore();
+    }
+  });
+
   it("owns the executable generator closure without unrelated CI planning code", () => {
     const root = process.cwd();
     const closure = resolveTsdownDeclarationGeneratorInputs(

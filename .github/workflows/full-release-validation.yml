@@ -764,9 +764,9 @@ jobs:
           const sha = process.env.PUBLICATION_TARGET_SHA;
           const git = (...args) => execFileSync('git', ['--no-replace-objects', '-C', root, ...args],
             { timeout: 120000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-          const records = git('ls-tree', '-r', '-z', sha, '--', 'package.json', 'extensions', 'packages', 'apps/android/version.json')
+          const records = git('ls-tree', '-r', '-z', sha, '--', 'package.json', 'extensions', 'packages')
             .toString('latin1').split('\0').filter(record =>
-              /^(?:package\.json|apps\/android\/version\.json|extensions\/[^/]+\/(?:package\.json|README\.md)|packages\/[^/]+\/package\.json)$/.test(record.slice(record.indexOf('\t') + 1)));
+              /^(?:package\.json|extensions\/[^/]+\/(?:package\.json|README\.md)|packages\/[^/]+\/package\.json)$/.test(record.slice(record.indexOf('\t') + 1)));
           if (records.length > 4096) throw new Error('publication metadata count exceeds limit');
           let bytes = 0;
           for (const record of records) {
@@ -912,7 +912,7 @@ jobs:
             fi
             if [[ "$RERUN_GROUP" == "all" || "$RERUN_GROUP" == "ci" ]]; then
               echo "- Normal CI: \`CI\` with \`target_ref=${TARGET_SHA}\`"
-              echo "- Locale preflight: generated-locale drift is a warning and does not block dispatch. Strict \`control-ui-i18n\` and \`native-i18n\` jobs still run in normal CI; their failures fail validation."
+              echo "- Locale preflight: generated-locale drift is a warning and does not block dispatch. Strict \`control-ui-i18n\` still runs in normal CI and fails validation on drift."
             else
               echo "- Normal CI: skipped by rerun group"
             fi
@@ -1070,7 +1070,6 @@ jobs:
           path: target
           sparse-checkout: |
             package.json
-            apps/macos/Sources/OpenClaw/Resources/Info.plist
           sparse-checkout-cone-mode: false
           fetch-depth: 1
           persist-credentials: false
@@ -1491,9 +1490,7 @@ jobs:
               dispatch_id="full-release-validation-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-ci"
               dispatch_run_name="CI ${dispatch_id}"
               ci_release_scope="${CI_RELEASE_SCOPE:-full}"
-              include_android=true
-              if [[ "$ci_release_scope" == "npm-beta" || "$ci_release_scope" == "npm-stable" ]]; then include_android=false; fi
-              args=(-f target_ref="$TARGET_SHA" -f release_scope="$ci_release_scope" -f include_android="$include_android" -f dispatch_id="$dispatch_id")
+              args=(-f target_ref="$TARGET_SHA" -f release_scope="$ci_release_scope" -f dispatch_id="$dispatch_id")
               context_ref="${TARGET_CONTEXT_REF:-$TARGET_REF}"
               context_ref="${context_ref#refs/heads/}"
               context_ref="${context_ref#refs/tags/}"
@@ -2603,7 +2600,7 @@ jobs:
           const jobs = diagnostics.children.normalCi?.timing.jobs ?? [];
           const lines = ["## Generated locale validation", "", "| Job | Result |", "| --- | --- |"];
           const warnings = [];
-          for (const name of ["control-ui-i18n", "native-i18n"]) {
+          for (const name of ["control-ui-i18n"]) {
             const result = jobs.find((job) => job.name === name)?.conclusion || "not recorded";
             lines.push(`| ${name} | ${result} |`);
             if (!["success", "skipped", "not recorded"].includes(result)) {

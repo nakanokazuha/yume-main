@@ -76,7 +76,6 @@ export const BOUNDARY_CHECKS = (
       ["--import", "./scripts/tsx.mjs", "scripts/check-extension-plugin-sdk-boundary.mts", "--all"],
     ],
     "lint:extensions:telegram-grammy-types",
-    ["native-state-schema-version", "node", ["scripts/check-native-state-schema-version.mjs"]],
   ] satisfies Array<string | [label: string, command: string, args: string[]]>
 ).map((check) => {
   if (typeof check === "string") {

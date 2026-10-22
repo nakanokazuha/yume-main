@@ -48,26 +48,6 @@ it.each(["openclaw/openclaw", "contributor/openclaw"])(
   },
 );
 
-it("does not budget a disabled PR screenshot request", () => {
-  const results = ["false", "true"].map((hint) => {
-    const result = runCiManifestFixture({
-      bundledPlanner: true,
-      eventName: "pull_request",
-      runnerProfile: "hybrid",
-      changedPaths: ["apps/android/app/src/main/java/ai/openclaw/app/MainActivity.kt"],
-      scopeEnv: { OPENCLAW_CI_RUN_ANDROID_SCREENSHOTS: hint },
-    });
-    expect(result.status, result.output).toBe(0);
-    expect(result.outputs.run_android_screenshots).toBe("false");
-    return result.outputs;
-  });
-  const disabledHint = expectDefined(results[0], "disabled screenshot hint");
-  const enabledHint = expectDefined(results[1], "enabled screenshot hint");
-  for (const key of ["pr_job_count", "hybrid_hosted_base_rows", "hybrid_hosted_total_rows"]) {
-    expect(expectDefined(enabledHint[key], key)).toBe(expectDefined(disabledHint[key], key));
-  }
-});
-
 it.each([
   { eventName: "pull_request", headRepository: "openclaw/openclaw", deferred: true },
   { eventName: "pull_request", headRepository: "contributor/openclaw", deferred: true },
@@ -82,13 +62,10 @@ it.each([
   const result = runCiManifestFixture({
     bundledPlanner: true,
     historicalCompatibility: false,
-    iosCapabilities: true,
     macosNodeParts: true,
-    protocolCoverage: true,
-    openClawKitTests: true,
     eventName,
     releaseGate,
-    changedPaths: ["src/infra/update-runner.ts", "apps/ios/Sources/Main.swift"],
+    changedPaths: ["src/infra/update-runner.ts"],
     selectedTestTargets: Object.values(CI_MANIFEST_FIXTURE_TARGETS).flat(),
     scopeEnv: {
       OPENCLAW_CI_HEAD_REPOSITORY:
@@ -97,7 +74,6 @@ it.each([
           : "openclaw/openclaw",
       OPENCLAW_CI_WORKFLOW_REVISION: revision,
       OPENCLAW_CI_VALIDATION_TIER: eventName === "schedule" ? "main" : "full",
-      OPENCLAW_CI_RUN_ANDROID_SCREENSHOTS: "true",
       OPENCLAW_CI_RUN_UI_TESTS: "true",
     },
   });
@@ -108,15 +84,12 @@ it.each([
     "run_ui_real_gateway",
     "run_checks_windows",
     "run_macos_node",
-    "run_macos_swift",
-    "run_ios_build",
-    "run_android_screenshots",
     "run_published_driver_update",
   ]) {
     expect(result.outputs[flag], flag).toBe(String(!deferred));
   }
-  // Keep independent static checks, ordinary UI/browser proof, and Android unit/lint work.
-  for (const flag of ["run_protocol_event_coverage", "run_ui_e2e", "run_android_job"]) {
+  // Keep independent static checks and ordinary UI/browser proof.
+  for (const flag of ["run_ui_e2e"]) {
     expect(result.outputs[flag], flag).toBe("true");
   }
   const rows = (key: string) =>
@@ -155,9 +128,6 @@ it.each([
     "checks-ui-e2e-real-gateway",
     "checks-windows",
     "macos-node",
-    "macos-swift",
-    "ios-build",
-    "android-screenshots",
     "published-driver-update",
   ]);
   const jobResults = gate.env.JOB_RESULTS.replace(/\$\{\{[\s\S]*?\}\}/gu, (expression: string) => {

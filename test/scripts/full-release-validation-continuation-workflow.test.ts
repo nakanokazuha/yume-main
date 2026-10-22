@@ -139,7 +139,7 @@ describe("full release metadata checkouts", () => {
     },
   );
 
-  it("keeps target metadata narrow and runs the macOS preflight from the tooling tree", () => {
+  it("keeps target metadata narrow and avoids removed native app checks", () => {
     const root = mkdtempSync(join(tmpdir(), "openclaw-release-sparse-"));
     try {
       const targetCheckouts = [
@@ -193,18 +193,12 @@ describe("full release metadata checkouts", () => {
           GITHUB_PATH: join(root, "github-path"),
         },
       });
-      expect(
-        execFileSync(
-          process.execPath,
-          [join(root, "workflow/scripts/release-preflight.mjs"), "--macos-versions-only"],
-          {
-            cwd: join(root, "target"),
-            encoding: "utf8",
-            timeout: 10_000,
-            env: { ...process.env, NODE_OPTIONS: "", NODE_PATH: "" },
-          },
-        ),
-      ).toContain("macOS app version metadata OK");
+      const reuseScript = readFileSync(
+        join(root, "workflow/scripts/github/find-reusable-release-validation.sh"),
+        "utf8",
+      );
+      expect(reuseScript).not.toContain("--macos-versions-only");
+      expect(reuseScript).not.toContain("apps/macos");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -332,7 +326,7 @@ else console.log(JSON.stringify({id:202,workflow_id:88,head_branch:'main',event:
   });
 
   it.each(["failure", "success", "missing"])(
-    "reports %s locale diagnostics without changing validation evidence",
+    "reports %s Control UI locale diagnostics without changing validation evidence",
     (conclusion) => {
       const summaryStep = step("diagnostic_drain", "Summarize locale validation");
       const root = tempDirs.make("openclaw-release-locales-");
@@ -347,7 +341,6 @@ else console.log(JSON.stringify({id:202,workflow_id:88,head_branch:'main',event:
                 normalCi: {
                   timing: {
                     jobs: [
-                      { name: "native-i18n", conclusion: "success" },
                       { name: "control-ui-i18n", conclusion },
                     ],
                   },
@@ -366,9 +359,6 @@ else console.log(JSON.stringify({id:202,workflow_id:88,head_branch:'main',event:
       const summary = readFileSync(summaryPath, "utf8");
       expect(summary).toContain(
         `| control-ui-i18n | ${conclusion === "missing" ? "not recorded" : conclusion} |`,
-      );
-      expect(summary).toContain(
-        `| native-i18n | ${conclusion === "missing" ? "not recorded" : "success"} |`,
       );
       expect(output.includes("::warning::")).toBe(conclusion === "failure");
       if (conclusion === "failure") {

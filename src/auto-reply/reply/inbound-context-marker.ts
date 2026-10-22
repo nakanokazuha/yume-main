@@ -9,8 +9,6 @@
  * Duplicated (never imported) in:
  *   - extensions/memory-lancedb/memory-capture-sanitization.ts (extension boundary
  *     forbids core imports)
- *   - apps/shared/OpenClawKit/Sources/OpenClawChatUI/ChatMarkdownPreprocessor.swift, which spells the
- *     same two code points as `\u{27E6}`/`\u{27E7}` escapes
  * Keep every copy equal to this value; a drifted copy silently stops stripping.
  */
 export const INBOUND_CONTEXT_MARKER = "⟦openclaw:ctx⟧";

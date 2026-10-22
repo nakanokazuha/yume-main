@@ -1,9 +1,7 @@
 // Runs the changed-file check lanes selected by `scripts/changed-lanes.mts`.
 import { execFileSync } from "node:child_process";
 import {
-  accessSync,
   chmodSync,
-  constants,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -20,12 +18,11 @@ import {
   hasConfigDocInput,
   isConfigDocSchemaSourcePath,
   hasDeadcodeScannedSource,
-  hasProtocolEventCoverageInput,
   listChangedPathsFromGit,
   listStagedChangedPaths,
 } from "./changed-lanes.mts";
 import type { ChangedLaneResult } from "./changed-lanes.mts";
-import { detectChangedScope, isMacosToolingPath } from "./ci-changed-scope.mjs";
+import { detectChangedScope } from "./ci-changed-scope.mjs";
 import {
   booleanFlag,
   isOpenEndedTruthyValue,
@@ -81,7 +78,6 @@ type ChangedCheckPlanOptions = {
   base?: string;
   head?: string;
   platform?: NodeJS.Platform;
-  swiftlintAvailable?: boolean;
 };
 
 type TargetedLintOptions = {
@@ -158,15 +154,6 @@ const CORE_LINT_OPTIMIZATION_NEUTRAL_PATH_RE =
   /^(?:scripts|test\/scripts)\/|^\.github\/workflows\/ci\.yml$|^ui\/(?:src\/.+|public\/themes\/[^/]+)\.css$/u;
 const TOOLING_LINT_OPTIMIZATION_NEUTRAL_PATH_RE =
   /^(?:test\/scripts\/|\.github\/workflows\/ci\.yml$)/u;
-const ANDROID_VERSION_SYNC_PATHS = new Set([
-  "apps/android/CHANGELOG.md",
-  "apps/android/Config/Version.properties",
-  "apps/android/fastlane/metadata/android/en-US/release_notes.txt",
-  "apps/android/version.json",
-]);
-const SWIFT_BUILD_CACHE_METADATA_TEST_PATH = "test/scripts/swift-build-cache-metadata.test.ts";
-const MACOS_APP_CI_PATH_RE =
-  /^(?:apps\/(?:macos\/(?!Tests\/.+\.swift$)|(?:macos-mlx-tts|shared|swabble)\/)|Swabble\/|src\/(?:agents\/github-exec-(?:launcher|credential)\.ts|shared\/worker-bundle-hash\.ts|worker\/workspace-rsync-receiver\.ts|gateway\/worker-environments\/workspace-(?:accepted-(?:remote-script|sync)|mutation-remote-script|rsync-path\.test|sync(?:-helpers)?)\.ts)$)/u;
 let corepackPnpmShimDir: string | undefined;
 let corepackPnpmShimCleanupRegistered = false;
 let cachedGeneratedExtensionAssetPaths: { cwd: string; paths: Set<string> } | undefined;
@@ -183,48 +170,6 @@ async function ensureChangedCheckRuntimeDependencies(paths: string[]) {
 // delays package-backed imports until after lane and remote-routing selection.
 if (!isDirectRun()) {
   await ensureChangedCheckRuntimeDependencies(["package.json"]);
-}
-
-function hasAndroidVersionSyncPath(paths: string[]) {
-  return paths.some((changedPath) => ANDROID_VERSION_SYNC_PATHS.has(changedPath));
-}
-
-function hasMacosAppCiPath(paths: string[]) {
-  // The metadata test has its own command; production edits still need native app proof.
-  // Swift test-target sources do not feed the packaged app; native CI still covers them.
-  return paths.some((changedPath) => {
-    return (
-      changedPath !== SWIFT_BUILD_CACHE_METADATA_TEST_PATH &&
-      (MACOS_APP_CI_PATH_RE.test(changedPath) || isMacosToolingPath(changedPath))
-    );
-  });
-}
-
-function executableExistsOnPath(command: string, env: NodeJS.ProcessEnv = process.env) {
-  const pathValue = env.PATH ?? env.Path ?? "";
-  const pathExts =
-    process.platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";") : [""];
-  for (const searchPath of pathValue.split(path.delimiter)) {
-    if (!searchPath) {
-      continue;
-    }
-    for (const ext of pathExts) {
-      try {
-        accessSync(path.join(searchPath, `${command}${ext}`), constants.X_OK);
-        return true;
-      } catch {
-        continue;
-      }
-    }
-  }
-  return false;
-}
-
-function shouldSkipAppLintForMissingSwiftlint(options: ChangedCheckPlanOptions = {}) {
-  const env = options.env ?? process.env;
-  const platform = options.platform ?? process.platform;
-  const swiftlintAvailable = options.swiftlintAvailable ?? executableExistsOnPath("swiftlint", env);
-  return platform !== "darwin" && !swiftlintAvailable;
 }
 
 export function shouldDelegateChangedCheckToCrabbox(
@@ -702,14 +647,6 @@ export function createChangedCheckPlan(
     );
   };
 
-  if (result.lanes.all || hasProtocolEventCoverageInput(result.paths)) {
-    addCommand(
-      "mobile protocol event coverage",
-      "node",
-      ["scripts/check-protocol-event-coverage.mjs"],
-      baseEnv,
-    );
-  }
   add("conflict markers", ["check:no-conflict-markers"]);
   if (
     result.paths.some((file) => /\.(?:ts|tsx|mts|mjs)$/u.test(file) || file === ".oxlintrc.json")
@@ -892,19 +829,6 @@ export function createChangedCheckPlan(
       baseEnv,
     );
   }
-  if (
-    result.paths.some(
-      (changedPath) =>
-        changedPath === "scripts/swift-build-cache-metadata.py" ||
-        changedPath === SWIFT_BUILD_CACHE_METADATA_TEST_PATH,
-    )
-  ) {
-    add(
-      "Swift build cache metadata tests",
-      ["test:serial", SWIFT_BUILD_CACHE_METADATA_TEST_PATH],
-      baseEnv,
-    );
-  }
   add("package patch guard", ["deps:patches:check"]);
   if (
     hasDeadcodeScannedSource(result.paths) &&
@@ -944,8 +868,6 @@ export function createChangedCheckPlan(
           file,
         ),
       ));
-  const shouldRunAndroidVersionSync = hasAndroidVersionSyncPath(result.paths);
-
   // Typechecking alone accepts extension imports; the graph guard also covers
   // shared test/tooling dependencies that core tests can pull into their graph.
   const narrowCoreTests = getChangedCoreTestPaths(typecheckResult) !== undefined;
@@ -981,14 +903,9 @@ export function createChangedCheckPlan(
     ]);
     // Metadata selectors bind Git/index bytes; artifact checks inspect the working tree.
     add("release changelog artifacts", ["changelog:check"]);
-    add("Android version sync", ["android:version:check"]);
     add("config schema baseline", ["config:schema:check"]);
     add("root dependency ownership", ["deps:root-ownership:check"]);
     return finishPlan("release metadata");
-  }
-
-  if (shouldRunAndroidVersionSync) {
-    add("Android version sync", ["android:version:check"]);
   }
 
   if (runAll) {
@@ -1108,45 +1025,8 @@ export function createChangedCheckPlan(
       add("raw HTTP/2 import guard", ["lint:tmp:no-raw-http2-imports"]);
     }
   }
-  if (lanes.apps && !options.lintOnly) {
-    const appScopes = result.paths
-      .filter((changedPath) => getChangedPathFacts(changedPath).surface === "app")
-      .map((changedPath) => detectChangedScope([changedPath]));
-    // Shared Apple sources select Android consumer CI, but Gradle ktlint owns
-    // only Android-exclusive app paths. Classify each path so mixed diffs retain both.
-    if (
-      appScopes.some(
-        ({ runAndroid, runMacos, runIosBuild }) => runAndroid && !runMacos && !runIosBuild,
-      )
-    ) {
-      addLint("lint Android", ["android:lint"]);
-    }
-    if (appScopes.some(({ runMacos, runIosBuild }) => runMacos || runIosBuild)) {
-      if (shouldSkipAppLintForMissingSwiftlint({ ...options, env: baseEnv })) {
-        addCommand(
-          "lint apps (swiftlint unavailable on this host)",
-          "node",
-          [
-            "-e",
-            "console.error('[check:changed] Swift app lint skipped: swiftlint is unavailable on this non-macOS host; macOS CI owns SwiftLint coverage.')",
-          ],
-          baseEnv,
-        );
-      } else {
-        addLint("lint apps", ["lint:apps"]);
-      }
-    }
-  }
-  if (hasMacosAppCiPath(result.paths)) {
-    add("macOS app CI tests", ["test:macos:ci"], baseEnv);
-  }
-  if (lanes.apps || lanes.core) {
-    addCommand(
-      "native state schema version guard",
-      "node",
-      ["scripts/check-native-state-schema-version.mjs"],
-      baseEnv,
-    );
+  if (detectChangedScope(result.paths).runMacosNode) {
+    add("macOS host CI tests", ["test:macos:ci"], baseEnv);
   }
 
   if (lanes.core || lanes.extensions) {

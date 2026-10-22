@@ -94,7 +94,6 @@ const CREATE_GITHUB_APP_TOKEN_V3 =
 const OPENGREP_PR_DIFF_WORKFLOW = ".github/workflows/opengrep-precise.yml";
 const OPENGREP_FULL_WORKFLOW = ".github/workflows/opengrep-precise-full.yml";
 const CONTROL_UI_LOCALE_REFRESH_WORKFLOW = ".github/workflows/control-ui-locale-refresh.yml";
-const NATIVE_APP_LOCALE_REFRESH_WORKFLOW = ".github/workflows/native-app-locale-refresh.yml";
 const CREATE_GENERATED_PR_TOKENS_ACTION = ".github/actions/create-generated-pr-tokens/action.yml";
 const PUBLISH_GENERATED_PR_ACTION = ".github/actions/publish-generated-pr/action.yml";
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -205,10 +204,6 @@ fi
     outputs: readWorkflowOutputs(outputPath),
     status: run.status,
   };
-}
-
-function readAndroidReleaseWorkflow() {
-  return parse(readFileSync(".github/workflows/android-release.yml", "utf8"));
 }
 
 function readWorkflowSanityWorkflow() {
@@ -530,27 +525,6 @@ describe("release fast lane label", () => {
 });
 
 describe("ci workflow guards", () => {
-  it("keeps Android PR capture on the release script without store authority", () => {
-    const job = readCiWorkflow().jobs["android-screenshots"];
-    expect(job.permissions).toEqual({ contents: "read" });
-    expect(job.environment).toBeUndefined();
-    expect(evaluateWorkflowRunner(job["runs-on"])).toBe("ubuntu-24.04");
-    const toolchain = job.steps.find(
-      (step: WorkflowStep) => step.uses === "./.ci-harness/.github/actions/setup-android-toolchain",
-    );
-    expect(toolchain.with["install-screenshot-emulators"]).toBe("true");
-    const capture = job.steps.find((step: WorkflowStep) => step.run === "pnpm android:screenshots");
-    expect(capture).toBeDefined();
-    expect(capture.env.SIPS).toBe(
-      "${{ runner.temp }}/openclaw-android-tools/android-sips-linux.sh",
-    );
-    expect(JSON.stringify(job)).not.toContain("secrets.");
-    expect(job.steps.filter((step: WorkflowStep) => step["continue-on-error"])).toEqual([]);
-    const evidence = job.steps.find((step: WorkflowStep) => step.uses === UPLOAD_ARTIFACT_V7);
-    expect(evidence.if).toBe("always()");
-    expect(evidence.with.path).toContain("phoneScreenshots/*.jpg");
-    expect(evidence.with.path).toContain("wearScreenshots/*.jpg");
-  });
 
   it("separates release QA lanes without weakening their resource locks", () => {
     const workflowPath = ".github/workflows/qa-live-transports-convex.yml";
@@ -865,17 +839,6 @@ AFTER_CD
     expect(diffBase.run).toContain('echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"');
   });
 
-  it("serializes the shared Swift package suite on hosted macOS retries", () => {
-    const macosSwift = readCiWorkflow().jobs["macos-swift"];
-
-    expect(macosSwift.env.OPENCLAWKIT_TEST_EXECUTION).toContain("github.run_attempt > 1");
-    const openClawKitTests = macosSwift.steps.find(
-      (candidate: WorkflowStep) => candidate.name === "OpenClawKit tests",
-    );
-    expect(openClawKitTests?.run).toContain('if [[ "$OPENCLAWKIT_TEST_EXECUTION" == "parallel" ]]');
-    expect(openClawKitTests?.run).toContain("--parallel");
-    expect(openClawKitTests?.run).toContain("--no-parallel");
-  });
 
   it("keeps every path-filtered hosted gate runnable on landing-relevant events", () => {
     const workflows = [
@@ -1145,17 +1108,6 @@ AFTER_CD
       contains: [["summary", staleInputs]],
     },
     {
-      name: "defers native publication when shared translation config changes",
-      invalidationOwner: [NATIVE_APP_LOCALE_REFRESH_WORKFLOW, "finalize"],
-      options: { ...inheritedAutoMerge, updateSource: "scripts/lib/control-ui-i18n-config.json" },
-      expected: { generatedA: "stale-pr-a" },
-      head: { reference: "initialBranch", equals: true },
-      contains: [
-        ["mergeCalls", "--disable-auto"],
-        ["summary", staleInputs],
-      ],
-    },
-    {
       name: "publishes after unrelated source changes when input invalidation is disabled",
       options: { invalidationPaths: "", overlapPolicy: "fail", updateSource: true },
       expected: { branchExists: true, generatedA: "desired-a" },
@@ -1232,37 +1184,6 @@ AFTER_CD
       expect(result.mergeCalls.includes("--disable-auto")).toBe(scenario.disablesAutoMerge);
     }
   });
-
-  it.skipIf(process.platform === "win32").each(["src/config/schema.help.runtime.ts"])(
-    "keeps native publication independent of Control UI schema changes: %s",
-    (sourcePath) => {
-      const nativeWorkflow = readWorkflow(NATIVE_APP_LOCALE_REFRESH_WORKFLOW);
-      const controlUiWorkflow = readWorkflow(CONTROL_UI_LOCALE_REFRESH_WORKFLOW);
-      const results = [nativeWorkflow, controlUiWorkflow].map((workflow) => {
-        const publisher = expectDefined(
-          workflow.jobs.finalize.steps.find(
-            (step: WorkflowStep) => step.uses === "./.github/actions/publish-generated-pr",
-          ),
-          "locale publisher",
-        );
-        return runGeneratedPublisherScenario(null, {
-          autoMerge: true,
-          invalidationPaths: publisher.with["invalidation-paths"],
-          updateSource: sourcePath,
-        });
-      });
-      const native = expectDefined(results[0], "native publication result");
-      const controlUi = expectDefined(results[1], "Control UI publication result");
-      expect(native.branchExists).toBe(true);
-      expect(native.generatedA).toBe("desired-a");
-      expect(native.mergeCalls).toContain("--auto --squash");
-      expect(controlUi.branchExists).toBe(false);
-      expect(controlUi.mergeCalls).toBe("");
-      expect(controlUi.summary).toContain(
-        "Deferred stale generated output because generator inputs changed on main.",
-      );
-    },
-  );
 
   it.skipIf(process.platform === "win32")(
     "fails stale generated publication when no successor run is guaranteed",
@@ -1581,57 +1502,6 @@ AFTER_CD
     expect(workflow.jobs["check-additional-shard"].strategy["max-parallel"]).toBe(12);
     expect(workflow.jobs["checks-windows"].strategy["max-parallel"]).toBe(5);
     expect(workflow.jobs["checks-ui-e2e-real-gateway"].strategy["max-parallel"]).toBe(2);
-    for (const [context, expected] of [
-      [{ eventName: "push" }, 4],
-      [{ eventName: "pull_request", runnerBackend: "blacksmith" }, 4],
-      [{ eventName: "pull_request", runnerBackend: "hybrid" }, 4],
-      [{ eventName: "pull_request", authorAssociation: "NONE" }, 4],
-      [{ eventName: "push", runnerBackend: "github" }, 2],
-      [{ eventName: "push", runnerBackend: "blacksmith", runAttempt: 2 }, 2],
-      [{ eventName: "workflow_dispatch", runnerBackend: "blacksmith" }, 2],
-      [{ eventName: "pull_request", headRepository: "contributor/openclaw" }, 4],
-      [{ eventName: "schedule", runnerBackend: "blacksmith" }, 2],
-      [
-        {
-          eventName: "workflow_dispatch",
-          runnerBackend: "hybrid",
-          preflightOutputs: { ci_qualification: "true", qualification_runner_backend: "hybrid" },
-        },
-        2,
-      ],
-      [{ eventName: "push", repository: "contributor/openclaw" }, 2],
-    ] as const) {
-      expect(
-        evaluateWorkflowExpression(workflow.jobs.android.strategy["max-parallel"], {
-          repository: "openclaw/openclaw",
-          runAttempt: 1,
-          ...context,
-        }),
-        JSON.stringify(context),
-      ).toBe(expected);
-    }
-    for (const runnerBackend of ["", "blacksmith", "hybrid", "runson", "github"] as const) {
-      for (const runAttempt of [1, 2]) {
-        const context = {
-          eventName: "pull_request" as const,
-          repository: "openclaw/openclaw",
-          headRepository: "contributor/openclaw",
-          authorAssociation: "FIRST_TIME_CONTRIBUTOR",
-          runnerBackend,
-          runAttempt,
-        };
-        const runner = evaluateWorkflowExpression(workflow.jobs.android["runs-on"], context);
-        const parallel = evaluateWorkflowExpression(
-          workflow.jobs.android.strategy["max-parallel"],
-          context,
-        );
-        const hosted = runnerBackend === "github" || runAttempt > 1;
-        expect(runner, JSON.stringify(context)).toBe(
-          hosted ? "ubuntu-24.04" : "blacksmith-8vcpu-ubuntu-2404",
-        );
-        expect(parallel, JSON.stringify(context)).toBe(hosted ? 2 : 4);
-      }
-    }
   });
 
   it("runs the Docker seed tier with the published updater and a checked main/PR smoke package", () => {
@@ -1985,118 +1855,6 @@ require("node:fs").writeFileSync("scheduler-restart", process.env.OPENCLAW_UPGRA
     }
   });
 
-  it("installs the Android SDK platform used by Gradle", () => {
-    const workflow = readCiWorkflow();
-    const releaseWorkflow = readAndroidReleaseWorkflow();
-    const action = readAndroidToolchainAction();
-    const appCompileSdk = readAndroidCompileSdk("apps/android/app/build.gradle.kts");
-    const benchmarkCompileSdk = readAndroidCompileSdk("apps/android/benchmark/build.gradle.kts");
-    const packageId = `platforms;android-${appCompileSdk}.0`;
-
-    expect(appCompileSdk).toBe(benchmarkCompileSdk);
-    expect(
-      workflow.jobs.android.steps.filter(
-        (step: WorkflowStep) =>
-          step.uses === "./.ci-harness/.github/actions/setup-android-toolchain",
-      ),
-    ).toHaveLength(1);
-    expect(
-      releaseWorkflow.jobs.publish_signed_android_apk.steps.filter(
-        (step: WorkflowStep) => step.uses === "./.github/actions/setup-android-toolchain",
-      ),
-    ).toHaveLength(1);
-
-    const sdkRestoreStep = expectDefined(
-      action.runs.steps.find((step: WorkflowStep) => step.name === "Restore Android SDK cache"),
-      "Android SDK cache restore step",
-    );
-    const sdkSaveStep = expectDefined(
-      action.runs.steps.find((step: WorkflowStep) => step.name === "Save Android SDK cache"),
-      "Android SDK cache save step",
-    );
-    const gradleCacheStep = expectDefined(
-      action.runs.steps.find((step: WorkflowStep) => step.name === "Setup Gradle cache"),
-      "Gradle cache setup step",
-    );
-    const javaStep = expectDefined(
-      action.runs.steps.find((step: WorkflowStep) => step.name === "Setup Java"),
-      "Android Java setup step",
-    );
-    const installStep = expectDefined(
-      action.runs.steps.find((step: WorkflowStep) => step.name === "Install Android SDK packages"),
-      "Android SDK package install step",
-    );
-
-    expect(javaStep.uses).toBe("actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6");
-    expect(javaStep.with).toMatchObject({
-      distribution: "temurin",
-      "java-version": 17,
-    });
-    expect(javaStep.with?.["set-default"]).not.toBe(false);
-    const gradleJavaStep = expectDefined(
-      action.runs.steps.find((step: WorkflowStep) => step.name === "Setup Gradle Java"),
-      "Gradle Java setup step",
-    );
-    expect(gradleJavaStep).toMatchObject({
-      id: "gradle-java",
-      uses: javaStep.uses,
-      with: {
-        distribution: "temurin",
-        "java-version": "21.0.12+101.0.LTS",
-        "set-default": false,
-      },
-    });
-    expect(action.outputs["gradle-java-home"].value).toBe("${{ steps.gradle-java.outputs.path }}");
-    expect(action.outputs["gradle-java-version"].value).toBe(
-      "${{ steps.gradle-java.outputs.version }}",
-    );
-    expect(action.inputs["cache-mode"].default).toBe("off");
-    expect(sdkRestoreStep.if).toBe("inputs.cache-mode != 'off'");
-    expect(sdkRestoreStep.uses).toBe(CACHE_V5);
-    expect(sdkRestoreStep.with?.key).toContain(`platform-${appCompileSdk}.0-`);
-    expect(sdkRestoreStep.with?.key).toContain(
-      "${{ inputs.install-screenshot-emulators == 'true' && 'screenshot-emulators' || 'base' }}",
-    );
-    expect(String(sdkRestoreStep.with?.["restore-keys"])).toContain(
-      "inputs.install-screenshot-emulators == 'true'",
-    );
-    expect(sdkSaveStep.if).toContain("inputs.cache-mode == 'read-write'");
-    expect(sdkSaveStep.if).toContain("steps.android-sdk-cache.outputs.cache-hit != 'true'");
-    expect(sdkSaveStep.uses).toBe(CACHE_SAVE_V5);
-    expect(sdkSaveStep.with?.key).toBe("${{ steps.android-sdk-cache.outputs.cache-primary-key }}");
-    expect(gradleCacheStep).toMatchObject({
-      if: "inputs.cache-mode != 'off'",
-      uses: SETUP_GRADLE_V6,
-      with: {
-        "add-job-summary": "never",
-        "cache-provider": "basic",
-        "cache-read-only": "${{ inputs.cache-mode != 'read-write' }}",
-      },
-    });
-    expect(installStep.run).toContain(`"${packageId}"`);
-    expect(installStep.run).toContain(
-      'yes | sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" --licenses >/dev/null || [[ "${PIPESTATUS[1]}" -eq 0 ]]',
-    );
-    const setupStep = expectDefined(
-      action.runs.steps.find((step: WorkflowStep) =>
-        step.run?.includes("commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip"),
-      ),
-      "Android SDK setup step",
-    );
-
-    expect(sdkRestoreStep.with?.key).toBe(
-      "${{ runner.os }}-android-sdk-v2-cmdline-15859902-platform-37.0-build-tools-36.0.0-${{ inputs.install-screenshot-emulators == 'true' && 'screenshot-emulators' || 'base' }}",
-    );
-    expect(String(sdkRestoreStep.with?.["restore-keys"]).trim().split("\n")).toEqual([
-      "${{ inputs.install-screenshot-emulators == 'true' && format('{0}-android-sdk-v2-cmdline-15859902-platform-37.0-build-tools-36.0.0-base', runner.os) || '' }}",
-    ]);
-    expect(setupStep.run).toContain('CMDLINE_TOOLS_VERSION="15859902"');
-    expect(setupStep.run).toContain(
-      'CMDLINE_TOOLS_SHA256="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"',
-    );
-    expect(setupStep.run).toContain("curl -fsSL --connect-timeout 10 --max-time 300");
-    expect(setupStep.run).toContain("sha256sum --check -");
-  });
 
   it("binds release targets to current authenticated ref evidence", () => {
     const workflow = readCiWorkflow();
@@ -2293,25 +2051,6 @@ require("node:fs").writeFileSync("scheduler-restart", process.env.OPENCLAW_UPGRA
     expect(readWorkflowOutputs(outputPath).sha).toBe("a".repeat(40));
   });
 
-  it("loads Android CI setup from the workflow revision for frozen targets", () => {
-    const steps = readCiWorkflow().jobs.android.steps as WorkflowStep[];
-    const checkoutIndex = steps.findIndex((step) => step.name === "Checkout");
-    const actionCheckoutIndex = steps.findIndex(
-      (step) => step.name === "Checkout CI Android toolchain action",
-    );
-    const setupIndex = steps.findIndex((step) => step.name === "Setup Android toolchain");
-    const actionCheckout = expectDefined(steps[actionCheckoutIndex], "Android action checkout");
-
-    expect(actionCheckout.uses).toBe(CHECKOUT_V6);
-    expect(actionCheckout.with).toMatchObject({
-      path: ".ci-harness",
-      "persist-credentials": false,
-      ref: "${{ github.workflow_sha }}",
-      "sparse-checkout": ".github/actions",
-    });
-    expect(checkoutIndex).toBeLessThan(actionCheckoutIndex);
-    expect(actionCheckoutIndex).toBeLessThan(setupIndex);
-  });
 
   it("keeps trusted hybrid controls on Blacksmith when optional hosted admission is closed", () => {
     const workflow = readCiWorkflow();
@@ -3594,59 +3333,6 @@ server.listen(0, "127.0.0.1", () => {
     expect(existsSync(boundaryReceipt)).toBe(true);
   });
 
-  it("keeps the Gradle sticky disk on O(1) per-task protected keys", () => {
-    const workflow = readCiWorkflow();
-    const androidSteps = workflow.jobs.android.steps as WorkflowStep[];
-    const mountWith = expectDefined(
-      androidSteps.find((step) => step.name === "Mount Gradle sticky disk")?.with,
-      "Gradle sticky mount step",
-    );
-    const pointStep = expectDefined(
-      androidSteps.find((step) => step.name === "Point Gradle at the sticky disk"),
-      "Gradle sticky point step",
-    );
-
-    // Task scope stays in the key (a light task like ktlint must never seed
-    // heavy build lanes), but PR number and dependency hash must not: those
-    // minted a backing disk per PR/bump until Blacksmith's installation-wide
-    // budget 429-failed every mount fleet-wide.
-    expect(mountWith.key).toBe("${{ github.repository }}-gradle-v2-${{ matrix.task }}");
-    expect(androidSteps.find((step) => step.name === "Mount Gradle sticky disk")?.if).toContain(
-      "vars.OPENCLAW_CI_RUNNER_BACKEND != 'github'",
-    );
-    expect(pointStep.if).toContain("vars.OPENCLAW_CI_RUNNER_BACKEND != 'github'");
-    // Single semantic writer: protected pushes commit explicitly (on-change's
-    // allocated-byte heuristic can miss a same-size refresh); PR clones stay read-only.
-    expect(mountWith.commit).toBe(
-      "${{ github.event_name != 'pull_request' && 'true' || 'false' }}",
-    );
-    // Gradle owns invalidation and expiry; dependency updates must retain reusable entries.
-    const stickyRoot = tempDirs.make("openclaw-gradle-sticky-");
-    const gradleHome = path.join(stickyRoot, "gradle-user-home");
-    const cachedDependency = path.join(gradleHome, "caches", "dependency.jar");
-    const githubEnv = path.join(stickyRoot, "github-env");
-    mkdirSync(path.dirname(cachedDependency), { recursive: true });
-    writeFileSync(cachedDependency, "cached dependency");
-    writeFileSync(path.join(stickyRoot, ".openclaw-gradle-deps-fingerprint"), "old-inputs\n");
-    const result = runWorkflowShellScript(
-      expectDefined(pointStep.run, "Gradle sticky home").replace(
-        "sticky_root=/var/tmp/openclaw-gradle",
-        `sticky_root=${quoteShell(stickyRoot)}`,
-      ),
-      {
-        env: {
-          ...process.env,
-          GITHUB_ENV: githubEnv,
-          GRADLE_DEPS_FINGERPRINT: "new-inputs",
-          STICKY_WRITER: "true",
-        },
-      },
-    );
-    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
-    expect(readFileSync(cachedDependency, "utf8")).toBe("cached dependency");
-    expect(readFileSync(githubEnv, "utf8")).toBe(`GRADLE_USER_HOME=${gradleHome}\n`);
-  });
-
   it("never keys a Blacksmith sticky disk by unbounded run dimensions", () => {
     // Blacksmith caps backing disks per installation; per-PR, per-commit,
     // per-run, or per-hash key segments mint disks until every mount 429s.
@@ -4101,10 +3787,6 @@ ${step.run}`,
       preflight.steps.find((step: WorkflowStep) => step.name === "Classify candidate cache trust"),
       "candidate cache trust step",
     );
-    const nativeCheckout = expectDefined(
-      workflow.jobs["native-i18n"].steps.find((step: WorkflowStep) => step.name === "Checkout"),
-      "native i18n checkout",
-    );
 
     expect(preflight.outputs).toMatchObject({
       candidate_trust: "${{ steps.candidate_trust.outputs.trust }}",
@@ -4137,11 +3819,6 @@ ${step.run}`,
       expect(step.uses, step.name).toContain("./.ci-harness/.github/actions/");
     }
 
-    expect(nativeCheckout.uses).toBeUndefined();
-    expect(nativeCheckout.env).toMatchObject({
-      CHECKOUT_SHA: "${{ needs.preflight.outputs.checkout_revision }}",
-      WORKFLOW_SHA: "${{ github.workflow_sha }}",
-    });
 
     for (const [jobName, job] of Object.entries(workflow.jobs)) {
       for (const step of (job as { steps?: WorkflowStep[] }).steps ?? []) {
@@ -4209,290 +3886,8 @@ ${step.run}`,
     ).toBe(revision);
   });
 
-  it.each([
-    { historical: false, hasWatchRtc: false, expected: true },
-    { historical: true, hasWatchRtc: true, expected: true },
-    { historical: true, hasWatchRtc: false, expected: false },
-  ])("prepares Watch RTC by source capability: %j", ({ historical, hasWatchRtc, expected }) => {
-    const workflow = readCiWorkflow();
-    for (const jobName of ["ios-build", "ios-screenshot-shard"]) {
-      const install = workflow.jobs[jobName].steps.find(
-        (step: WorkflowStep) => step.name === "Install Watch Rust toolchain",
-      );
-      const engine = workflow.jobs["ios-build"].steps.find(
-        (step: WorkflowStep) => step.name === "Test Watch RTC engine",
-      );
-      for (const phase of ["smoke", "tests", "release"]) {
-        const context: Parameters<typeof evaluateWorkflowExpression>[1] = {
-          eventName: "workflow_dispatch",
-          repository: "openclaw/openclaw",
-          runAttempt: 1,
-          env: { HISTORICAL_TARGET: String(historical) },
-          matrix: { phase },
-          fileHashes: hasWatchRtc ? { "apps/shared/OpenClawWatchRTC/Cargo.toml": "present" } : {},
-        };
-        expect(evaluateWorkflowExpression(`\${{ ${install.if} }}`, context)).toBe(expected);
-        expect(evaluateWorkflowExpression(`\${{ ${engine.if} }}`, context)).toBe(
-          expected && phase === "tests",
-        );
-      }
-    }
-  });
 
-  it("retries macOS release builds only when Sparkle metadata is incomplete", () => {
-    const steps = readCiWorkflow().jobs["macos-swift"].steps;
-    const buildStep = steps.find((step: WorkflowStep) => step.name === "Swift build (release)");
-    const validateCacheStep = steps.find(
-      (step: WorkflowStep) => step.name === "Validate Swift build cache",
-    );
-    const runFixture = (
-      artifactState: "no-build" | "absent" | "incomplete" | "complete",
-      mode: "cache" | "recover" | "fail",
-    ) => {
-      const root = tempDirs.make(`openclaw-swift-${mode}-${artifactState}-`);
-      const binDir = path.join(root, "bin");
-      const frameworkDir = path.join(
-        root,
-        "apps/macos/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework",
-      );
-      const callsPath = path.join(root, "swift-calls");
-      const outputPath = path.join(root, "github-output");
-      mkdirSync(binDir, { recursive: true });
-      if (artifactState === "absent" && mode === "cache") {
-        mkdirSync(path.join(root, "apps/macos/.build"), { recursive: true });
-      } else if (artifactState === "incomplete" || artifactState === "complete") {
-        mkdirSync(frameworkDir, { recursive: true });
-      }
-      if (artifactState === "complete") {
-        writeFileSync(path.join(frameworkDir, "Info.plist"), "complete\n", "utf8");
-      }
-      const buildScript =
-        mode === "cache"
-          ? ""
-          : `
-if [[ "\${1:-}" == "package" ]]; then
-  exit 0
-fi
-build_count="$(grep -c '^build ' "$SWIFT_CALLS")"
-if [[ "$BUILD_OUTCOME" == "recover" && "$build_count" -eq 2 ]]; then
-  exit 0
-fi
-exit 1
-`;
-      writeFileSync(
-        path.join(binDir, "swift"),
-        `#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\\n' "$*" >> "$SWIFT_CALLS"
-${buildScript}`,
-        { mode: 0o755 },
-      );
-      const result = runWorkflowShellScript(
-        mode === "cache" ? validateCacheStep.run : buildStep.run,
-        {
-          cwd: root,
-          env: {
-            ...process.env,
-            ...(mode === "cache" ? { GITHUB_OUTPUT: outputPath } : { BUILD_OUTCOME: mode }),
-            PATH: `${binDir}:${process.env.PATH ?? ""}`,
-            SWIFT_CALLS: callsPath,
-          },
-        },
-      );
-      return {
-        calls:
-          mode === "cache" && !existsSync(callsPath)
-            ? []
-            : readFileSync(callsPath, "utf8").trim().split("\n"),
-        output:
-          mode === "cache"
-            ? readFileSync(outputPath, "utf8").trim()
-            : `${result.stdout}${result.stderr}`,
-        status: result.status,
-      };
-    };
 
-    for (const artifactState of ["no-build", "complete"] as const) {
-      const result = runFixture(artifactState, "cache");
-      expect(result.status).toBe(0);
-      expect(result.calls).toEqual([]);
-      expect(result.output).toBe("cache-valid=true");
-    }
-    for (const artifactState of ["absent", "incomplete"] as const) {
-      const result = runFixture(artifactState, "cache");
-      expect(result.status).toBe(0);
-      expect(result.calls).toEqual(["package --package-path apps/macos reset"]);
-      expect(result.output).toBe("cache-valid=false");
-    }
-
-    const releaseBuildCommand =
-      "build --package-path apps/macos --product OpenClaw --configuration release";
-    const packageResetCommand = "package --package-path apps/macos reset";
-
-    const absentFramework = runFixture("absent", "fail");
-    expect(absentFramework.status).toBe(1);
-    expect(absentFramework.calls).toEqual([releaseBuildCommand]);
-
-    const recovered = runFixture("incomplete", "recover");
-    expect(recovered.status).toBe(0);
-    expect(recovered.calls).toEqual([
-      releaseBuildCommand,
-      packageResetCommand,
-      releaseBuildCommand,
-    ]);
-    expect(recovered.output).toContain("did not produce complete Sparkle metadata");
-
-    const completeFramework = runFixture("complete", "fail");
-    expect(completeFramework.status).toBe(1);
-    expect(completeFramework.calls).toEqual([releaseBuildCommand]);
-
-    const secondFailure = runFixture("incomplete", "fail");
-    expect(secondFailure.status).toBe(1);
-    expect(secondFailure.calls).toEqual([
-      releaseBuildCommand,
-      packageResetCommand,
-      releaseBuildCommand,
-    ]);
-  });
-
-  it("uses native macOS Swift tests and preserves the first failure", () => {
-    const workflow = readCiWorkflow();
-    const macosSwift = workflow.jobs["macos-swift"];
-    const testStep = macosSwift.steps.find((step: WorkflowStep) => step.name === "Swift test");
-    const buildCache = macosSwift.steps.find(
-      (step: WorkflowStep) => step.id === "swift-build-cache",
-    );
-    const nativeCachePrefix =
-      "${{ runner.os }}-swift-build-${{ matrix.phase == 'tests' && 'v7' || 'v6' }}-${{ matrix.phase }}-${{ hashFiles('scripts/swift-build-cache-metadata.py') }}-graph-${{ steps.swift-toolchain.outputs.key }}-" +
-      "${{ hashFiles('apps/macos/Package*.swift', 'apps/macos/Package.resolved', 'apps/shared/**/Package*.swift', 'apps/shared/**/Package.resolved', 'apps/swabble/Package*.swift', 'apps/swabble/Package.resolved') }}-";
-
-    expect(buildCache.with).toMatchObject({
-      key: expect.stringContaining(nativeCachePrefix),
-      "restore-keys": `${nativeCachePrefix}\n`,
-    });
-    const restoreMetadata = macosSwift.steps.find(
-      (step: WorkflowStep) => step.name === "Restore Swift build input timestamps",
-    );
-    const recordMetadata = macosSwift.steps.find(
-      (step: WorkflowStep) => step.name === "Record Swift build input timestamps",
-    );
-    const saveBuildCache = macosSwift.steps.find(
-      (step: WorkflowStep) => step.name === "Save Swift build directory cache",
-    );
-    expect(restoreMetadata.if).toBe(
-      "steps.validate-swift-build-cache.outputs.cache-valid == 'true' && env.HISTORICAL_TARGET != 'true'",
-    );
-    expect(restoreMetadata.run).toBe("python3 -I -S scripts/swift-build-cache-metadata.py restore");
-    expect(recordMetadata.run).toBe("python3 -I -S scripts/swift-build-cache-metadata.py record");
-    const saveEligibility = saveBuildCache.if.split(" && (env.HISTORICAL_TARGET")[0];
-    expect(recordMetadata.if).toBe(`${saveEligibility} && env.HISTORICAL_TARGET != 'true'`);
-    expect(saveBuildCache.if).toBe(
-      `${saveEligibility} && (env.HISTORICAL_TARGET == 'true' || steps.record-swift-build-cache-metadata.outcome == 'success')`,
-    );
-    const stepIndex = (step: WorkflowStep) => macosSwift.steps.indexOf(step);
-    expect(stepIndex(restoreMetadata)).toBeLessThan(stepIndex(testStep));
-    expect(stepIndex(recordMetadata)).toBeGreaterThan(stepIndex(testStep));
-    expect(stepIndex(recordMetadata) + 1).toBe(stepIndex(saveBuildCache));
-    expect(macosSwift.env).not.toHaveProperty("SWIFT_TEST_EXECUTION");
-    expect(testStep.id).toBe("swift-test");
-    const currentTargetBranch = testStep.run.split('elif [[ "$HISTORICAL_TARGET" == "true" ]]')[0];
-    expect(currentTargetBranch).toContain('logical_cpu="$(sysctl -n hw.logicalcpu)"');
-    expect(currentTargetBranch).toContain('[[ ! "$logical_cpu" =~ ^[1-9][0-9]*$ ]]');
-    expect(currentTargetBranch).toContain(
-      "swift_test_width=$(( logical_cpu < 12 ? logical_cpu : 12 ))",
-    );
-    expect(currentTargetBranch).toContain(
-      'swift_test_args+=(--experimental-maximum-parallelization-width "$swift_test_width")',
-    );
-    expect(currentTargetBranch).not.toContain("swift_test_args+=(--parallel)");
-    expect(currentTargetBranch).not.toContain("--no-parallel");
-    expect(testStep.run).toContain("swift_test_args+=(--no-parallel)");
-
-    for (const buildExitCode of [0, 23]) {
-      const root = tempDirs.make(`openclaw-swift-test-${buildExitCode}-`);
-      const binDir = path.join(root, "bin");
-      const callsPath = path.join(root, "swift-calls");
-      const outputPath = path.join(root, "github-output");
-      mkdirSync(binDir, { recursive: true });
-      symlinkSync(path.resolve("scripts"), path.join(root, "scripts"), "dir");
-      mkdirSync(path.join(root, ".ci-harness/scripts"), { recursive: true });
-      symlinkSync(path.resolve("scripts/lib"), path.join(root, ".ci-harness/scripts/lib"), "dir");
-      writeFileSync(
-        path.join(binDir, "swift"),
-        `#!/usr/bin/env bash
-set -euo pipefail
-SWIFT_CALLS=${JSON.stringify(callsPath)}
-GITHUB_OUTPUT=${JSON.stringify(outputPath)}
-BUILD_EXIT_CODE=${buildExitCode}
-printf '%s\\n' "$*" >> "$SWIFT_CALLS"
-if [[ "\${1:-}" == "build" ]]; then
-  [[ ! -s "$GITHUB_OUTPUT" ]] || exit 24
-  exit "$BUILD_EXIT_CODE"
-fi
-test_count="$(grep -c '^test ' "$SWIFT_CALLS")"
-[[ "$test_count" -gt 1 ]]
-`,
-        "utf8",
-      );
-      chmodSync(path.join(binDir, "swift"), 0o755);
-      writeFileSync(path.join(binDir, "sysctl"), "#!/usr/bin/env bash\nprintf '4\\n'\n", {
-        mode: 0o755,
-      });
-      // This fixture executes the real launcher: never fall through to host Security.
-      writeFileSync(
-        path.join(binDir, "security"),
-        `#!${process.execPath}
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const args = process.argv.slice(2);
-assert.notEqual(process.env.HOME, ${JSON.stringify(root)});
-assert.equal(path.dirname(args.at(-1)), path.join(process.env.HOME, 'Library/Keychains'));
-if (args[0] === 'create-keychain') fs.writeFileSync(args.at(-1), 'inert keychain');
-if (args[0] === 'delete-keychain') fs.unlinkSync(args.at(-1));
-`,
-        { mode: 0o755 },
-      );
-      const result = runWorkflowShellScript(testStep.run, {
-        cwd: root,
-        env: {
-          ...process.env,
-          CI: "true",
-          GITHUB_ACTIONS: "true",
-          RUNNER_OS: "macOS",
-          RUNNER_TEMP: root,
-          HOME: root,
-          GITHUB_OUTPUT: outputPath,
-          PATH: `${binDir}:${process.env.PATH ?? ""}`,
-          SWIFT_TEST_EXECUTION: "serial",
-          HISTORICAL_TARGET: "false",
-        },
-      });
-      const calls = readFileSync(callsPath, "utf8").trim().split("\n");
-      expect(result.status).toBe(buildExitCode || 1);
-      expect(calls).toEqual([
-        "build --package-path apps/macos --build-system native --enable-code-coverage --disable-index-store -Xswiftc -gline-tables-only --build-tests",
-        ...(buildExitCode === 0
-          ? [
-              expect.stringMatching(
-                /^test --package-path apps\/macos --build-system native --enable-code-coverage --disable-index-store -Xswiftc -gline-tables-only --skip-build --experimental-maximum-parallelization-width 4 --skip AppStateIsolationTests\|ProfileChatPreferencesTests\|QuickChatCatalogPresentationTests --event-stream-output-path \S+\/swift-testing-events\.jsonl --event-stream-version 6\.3$/,
-              ),
-            ]
-          : []),
-      ]);
-      const output = existsSync(outputPath) ? readFileSync(outputPath, "utf8").trim() : "";
-      const outputLines = output.split("\n");
-      if (buildExitCode === 0) {
-        expect(outputLines).toHaveLength(2);
-        expect(outputLines[0]).toBe("debug-tests-built=true");
-        expect(
-          outputLines[1]?.startsWith(`menu-default-artifact-path=${root}/openclaw-menu-default-`),
-        ).toBe(true);
-      } else {
-        expect(output).toBe("");
-      }
-    }
-  });
 
   it("bounds the Windows Crabbox hydrate main fetch", () => {
     const workflow = readFileSync(".github/workflows/crabbox-hydrate.yml", "utf8");
@@ -6285,7 +5680,6 @@ it("pins generated publisher and maturity owners before credentials and selected
   );
   for (const file of [
     CONTROL_UI_LOCALE_REFRESH_WORKFLOW,
-    NATIVE_APP_LOCALE_REFRESH_WORKFLOW,
     ".github/workflows/ci-test-timings-refit.yml",
     MATURITY_SCORECARD_WORKFLOW,
   ]) {
@@ -6571,11 +5965,6 @@ it("isolates release credentials and verifies trusted AppImage and signing tools
     {
       file: ".github/workflows/linux-app-release.yml",
       job: "validate_release",
-      checkout: "Checkout selected tag",
-    },
-    {
-      file: ".github/workflows/macos-release.yml",
-      job: "validate_macos_release_request",
       checkout: "Checkout selected tag",
     },
     {

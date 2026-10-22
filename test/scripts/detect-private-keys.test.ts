@@ -32,12 +32,11 @@ describe("detect-private-keys markers", () => {
     expect(PRIVATE_KEY_SCAN_EXCLUDE.test("scripts/detect-private-keys.mts")).toBe(false);
   });
 
-  it("excludes colocated test fixtures and the iOS Fastfile, nothing else", () => {
+  it("excludes colocated test fixtures, nothing else", () => {
     expect(PRIVATE_KEY_SCAN_EXCLUDE.test("src/infra/push-apns.test.ts")).toBe(true);
-    expect(PRIVATE_KEY_SCAN_EXCLUDE.test("apps/ios/fastlane/Fastfile")).toBe(true);
     expect(PRIVATE_KEY_SCAN_EXCLUDE.test("src/infra/push-apns.ts")).toBe(false);
     expect(PRIVATE_KEY_SCAN_EXCLUDE.test("docs/push-apns.test.ts.md")).toBe(false);
-    expect(PRIVATE_KEY_SCAN_EXCLUDE.test("vendor/apps/ios/fastlane/Fastfile.bak")).toBe(false);
+    expect(PRIVATE_KEY_SCAN_EXCLUDE.test("apps/linux/src/main.rs")).toBe(false);
   });
 });
 

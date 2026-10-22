@@ -1,21 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { detectChangedScope } from "../../scripts/ci-changed-scope.mjs";
 
-describe("shared native contract fixture CI scope", () => {
-  it("runs Android and macOS contract tests for the shared Talk fixture", () => {
+describe("shared runtime contract fixture CI scope", () => {
+  it("runs the Node suite for the shared Talk fixture", () => {
     const fixturePath = "test/fixtures/talk-config-contract.json";
-    expect(detectChangedScope([fixturePath])).toEqual({
-      runNode: true,
-      runMacos: true,
-      runMacosNode: true,
-      runIosBuild: false,
-      runAndroid: true,
-      runWindows: false,
-      runSkillsPython: false,
-      runChangedSmoke: false,
-      runControlUiI18n: false,
-      runUiTests: false,
-    });
+    expect(detectChangedScope([fixturePath])).toMatchObject({ runNode: true });
+    expect(detectChangedScope([fixturePath])).not.toHaveProperty("runAndroid");
+    expect(detectChangedScope([fixturePath])).not.toHaveProperty("runIosBuild");
   });
 
   it.each([
@@ -29,10 +20,7 @@ describe("shared native contract fixture CI scope", () => {
     "src/gateway/worker-environments/workspace-accepted-remote-script.ts",
     "src/gateway/worker-environments/workspace-mutation-remote-script.ts",
     "src/gateway/worker-environments/workspace-rsync-path.test.ts",
-  ])("routes worker deploy artifact owner %s through macOS CI", (ownerPath) => {
-    expect(detectChangedScope([ownerPath])).toMatchObject({
-      runNode: true,
-      runMacos: true,
-    });
+  ])("routes worker deploy artifact owner %s through Node CI", (ownerPath) => {
+    expect(detectChangedScope([ownerPath])).toMatchObject({ runNode: true });
   });
 });

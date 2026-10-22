@@ -45,7 +45,6 @@ function expectedHarnessSparseCheckoutArgs(linux: boolean) {
     "--no-cone",
     "/.github/actions/",
     "/scripts/lib/pnpm-lockfile-documents.mjs",
-    "/scripts/ios-screenshot-evidence.mjs",
     "/scripts/lib/direct-run.mjs",
     "/scripts/ci-static-step.sh",
     ...(linux
@@ -64,11 +63,7 @@ function expectedHarnessSparseCheckoutArgs(linux: boolean) {
           "/scripts/stage-openclaw-bun.sh",
           "/scripts/lib/openclaw-bun.json",
         ]
-      : [
-          "/scripts/lib/swift-toolchain.sh",
-          "/scripts/lib/ci-ios-smoke-plan.mjs",
-          "/scripts/ci-xcodebuild.py",
-        ]),
+      : [],
   ];
 }
 
@@ -405,7 +400,6 @@ it.concurrent.for([
       ...(posix ? { [executable]: "#!/bin/sh\nexit 0\n" } : {}),
     };
     const evidenceScripts = {
-      "scripts/ios-screenshot-evidence.mjs": "workflow evidence script\n",
       "scripts/lib/direct-run.mjs": "workflow direct-run script\n",
       "scripts/ci-static-step.sh": "workflow static-step script\n",
     };
@@ -415,18 +409,10 @@ it.concurrent.for([
         "utf8",
       ),
     };
-    const platformScripts = {
-      "scripts/lib/swift-toolchain.sh": "workflow Swift toolchain helper\n",
-      "scripts/ci-xcodebuild.py": "workflow Xcode diagnostics helper\n",
-    };
     const preflightScripts = {
       "scripts/ci-build-manifest.mjs": readFileSync("scripts/ci-build-manifest.mjs", "utf8"),
-    };
-    const simulatorScripts = {
-      "scripts/lib/ci-ios-smoke-plan.mjs": readFileSync(
-        "scripts/lib/ci-ios-smoke-plan.mjs",
-        "utf8",
-      ),
+      "scripts/lib/release-context.mjs": readFileSync("scripts/lib/release-context.mjs", "utf8"),
+      "scripts/lib/release-version.mjs": readFileSync("scripts/lib/release-version.mjs", "utf8"),
     };
     const releasePolicy = Object.fromEntries(
       [
@@ -450,7 +436,6 @@ it.concurrent.for([
     let workflowRevision = "";
     let candidateAction = files[action];
     let candidateEvidenceScripts: Record<string, string> = evidenceScripts;
-    let candidatePlatformScripts: Record<string, string> = platformScripts;
     const existingExcludes = retained
       ? "/saved-artifact/\n/.ci-harness/\n"
       : "# Existing local excludes\r\n/saved-artifact/";
@@ -502,9 +487,7 @@ it.concurrent.for([
           ...files,
           ...evidenceScripts,
           ...nodeSetupScripts,
-          ...platformScripts,
           ...preflightScripts,
-          ...simulatorScripts,
           ...releasePolicy,
           ...candidateFiles,
         })) {
@@ -536,12 +519,6 @@ it.concurrent.for([
           for (const [name, contents] of Object.entries(candidateEvidenceScripts)) {
             writeFileSync(path.join(source, name), contents);
           }
-          candidatePlatformScripts = Object.fromEntries(
-            Object.keys(platformScripts).map((name) => [
-              name,
-              "candidate Swift toolchain helper\n",
-            ]),
-          );
           for (const [name, contents] of Object.entries(candidatePlatformScripts)) {
             writeFileSync(path.join(source, name), contents);
           }
@@ -553,7 +530,6 @@ it.concurrent.for([
             action,
             ...Object.keys(evidenceScripts),
             ...Object.keys(nodeSetupScripts),
-            ...Object.keys(platformScripts),
             ...Object.keys(releasePolicy),
           );
           run("commit", "--no-gpg-sign", "-m", "selected candidate");
@@ -636,11 +612,6 @@ it.concurrent.for([
             candidateEvidenceScripts[name],
           );
         }
-        for (const name of Object.keys(platformScripts)) {
-          expect(readFileSync(path.join(workspace, name), "utf8")).toBe(
-            candidatePlatformScripts[name],
-          );
-        }
         if (workflow === "missing-action") {
           expect(existsSync(path.join(workspace, action))).toBe(false);
           expect(existsSync(path.join(harness, action))).toBe(false);
@@ -682,24 +653,9 @@ it.concurrent.for([
             expect(readFileSync(path.join(harness, name), "utf8")).toBe(contents);
           }
         }
-        for (const [name, contents] of Object.entries(platformScripts)) {
-          expect(existsSync(path.join(harness, name)), name).toBe(kind === "platform");
-          if (kind === "platform") {
-            expect(readFileSync(path.join(harness, name), "utf8")).toBe(contents);
-          }
-        }
         for (const [name, contents] of Object.entries(preflightScripts)) {
           expect(existsSync(path.join(harness, name)), name).toBe(preflight);
           if (preflight) {
-            expect(readFileSync(path.join(harness, name), "utf8")).toBe(contents);
-          }
-        }
-        for (const [name, contents] of Object.entries(simulatorScripts)) {
-          const ownsSimulator = preflight || kind === "platform";
-          expect(existsSync(path.join(harness, name)), name).toBe(ownsSimulator);
-          if (ownsSimulator) {
-            expect(readFileSync(path.join(harness, name), "utf8")).toBe(contents);
-            writeFileSync(path.join(workspace, name), "throw new Error('candidate planner');\n");
             expect(readFileSync(path.join(harness, name), "utf8")).toBe(contents);
           }
         }

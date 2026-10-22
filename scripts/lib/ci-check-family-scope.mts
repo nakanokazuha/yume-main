@@ -1,4 +1,4 @@
-import { detectChangedLanes, hasProtocolEventCoverageInput } from "../changed-lanes.mts";
+import { detectChangedLanes } from "../changed-lanes.mts";
 import {
   getChangedPathFacts,
   isTestFileTarget,
@@ -15,8 +15,6 @@ const ADDITIONAL_GROUPS = [
 ];
 const CODE_PATH_RE = /\.[cm]?[jt]sx?$/u;
 const SOURCE_PATH_RE = /^(?:src|extensions|packages)\//u;
-const PROTOCOL_OUTPUT_PATH_RE =
-  /^(?:apps\/shared\/OpenClawKit\/Sources\/OpenClawProtocol\/GatewayModels\.swift|apps\/android\/app\/src\/main\/java\/ai\/openclaw\/app\/(?:gateway\/GatewayProtocol|protocol\/OpenClawProtocolConstants)\.kt)$/u;
 
 type CiCheckFamilyScope = {
   mode: "full" | "scoped";
@@ -76,25 +74,15 @@ export function resolveCiCheckFamilyScope(changedPaths: readonly string[]): CiCh
     ({ path, surface }) =>
       surface !== "docs" && SOURCE_PATH_RE.test(path) && !isTestFileTarget(path),
   );
-  const nativeSchema = paths.includes(
-    "apps/shared/OpenClawKit/Sources/OpenClawNativeState/OpenClawNativeStateSQLite.swift",
-  );
-  const toolDisplaySnapshot = paths.includes(
-    "apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json",
-  );
-  const nativeStorage = matches(/^apps\/macos\/Sources\/OpenClaw\/.*\.swift$/u);
   const schemaBaseline = paths.includes(
     "docs/.generated/sqlite-session-transcript-schema-baseline.sha256",
   );
   const inventoryDocs = matches(/^docs\/(?:channels|providers|plugins|\.generated)\//u);
   const { lanes } = detectChangedLanes(paths);
-  // Protocol generation also reads source text instead of importing it. Keep
-  // the package scanner, method descriptors, and existing event owner edges.
+  // Protocol generation also reads source text instead of importing it.
   const protocolInput =
-    matches(PROTOCOL_OUTPUT_PATH_RE) ||
     paths.some((file) => file.startsWith("packages/gateway-protocol/")) ||
-    paths.includes("src/gateway/methods/core-descriptors.ts") ||
-    hasProtocolEventCoverageInput(paths);
+    paths.includes("src/gateway/methods/core-descriptors.ts");
   const types =
     code || (matches(/\.json$/u) && (source || facts.some(({ surface }) => surface === "ui")));
 
@@ -105,7 +93,7 @@ export function resolveCiCheckFamilyScope(changedPaths: readonly string[]): CiCh
     checkTasks: CHECK_TASKS.filter(
       (task) =>
         (task === "guards" &&
-          (code || runtimeSource || matches(/\.swift$/u) || toolDisplaySnapshot)) ||
+          (code || runtimeSource)) ||
         (task === "npm-lock" && matches(/^packages\/normalization-core\//u)) ||
         (task === "bundled-channel-config-metadata" && lanes.bundledChannelConfigMetadata) ||
         (task === "dependencies" && code),
@@ -118,10 +106,10 @@ export function resolveCiCheckFamilyScope(changedPaths: readonly string[]): CiCh
     ],
     additionalGroups: ADDITIONAL_GROUPS.filter(
       (group) =>
-        (group === "boundaries" && (code || nativeSchema)) ||
+        (group === "boundaries" && code) ||
         (group === "source-contracts" && (source || schemaBaseline)) ||
         (group === "extension-package-boundary" && runtimeSource) ||
-        (group === "runtime-topology-architecture" && (source || code || nativeStorage)),
+        (group === "runtime-topology-architecture" && (source || code)),
     ),
     baselineRatchets: code || runtimeSource || inventoryDocs,
     madgeImportCycles: matches(/\.(?:[cm]?ts|tsx)$/u),

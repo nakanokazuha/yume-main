@@ -36,3 +36,10 @@ The local host supports Node and pnpm versions declared by this release. Rust/Ca
 ## G0 disposition
 
 **Not passed at the 2026-10-22 snapshot.** The source pin, frozen dependency install, and focused tests are evidenced. The full baseline build, complete import/reachability inventory, baseline runtime/resource metrics, full licensing scan, and full contract mapping remain outstanding. No upstream code had been deleted at this snapshot. The creator's later direct instruction authorizes extraction while these audit items remain recorded as open; see `docs/17_BUILD_STATUS.md` for current activity.
+
+## 2026-10-23 reproducibility correction and baseline rerun
+
+- The first repository import did not track `pnpm-lock.yaml`, because the inherited `.gitignore` entry suppressed the upstream-tracked lockfile. The exact lockfile from pinned commit `1b58cb9a1b4f4353e1add63c8506db4d890962e8` is now preserved in baseline commit `2272ab4f` and tag `upstream-v2026.10.5-baseline-locked`; the tag was pushed to the creator's repository. The extracted branch tracks the same lockfile with only the removed SenseAudio importer.
+- A fresh baseline worktree installed with pnpm 12.9.0 using `install --frozen-lockfile --ignore-scripts` (189 projects; 1,473 packages; 1,707 lock entries; supply-chain policy passed) and completed `pnpm build` successfully in 3m28.6s. The earlier timeout at `write-unified-entry-dts` was too short; that phase took 1m44.2s on this run.
+- The baseline build reports an existing Control UI startup JavaScript gzip budget overrun: 374,204 bytes against a 373,454-byte limit. The build exits 0. Its initial CSS advisory warning also remains below the hard ceiling.
+- G0 remains **not passed**: the full import/reachability map, all retained-code and asset licensing, U-01–U-12 proof mapping, startup/idle-RSS baseline, and target hardware checks remain incomplete. The successful source build closes only the full-build item.

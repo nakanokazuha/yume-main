@@ -8,7 +8,7 @@ const sha = "a".repeat(40);
 const otherSha = "f".repeat(40);
 const releaseTag = "v2026.8.1";
 
-type ReleaseMode = "linux" | "macos" | "placeholder";
+type ReleaseMode = "linux" | "placeholder";
 type RunOptions = Partial<Parameters<typeof runCiGitStep>[0]>;
 
 const releases: Record<
@@ -27,14 +27,6 @@ const releases: Record<
     },
     env: { RELEASE_TAG: releaseTag, WORKFLOW_SHA: otherSha },
     revisions: { [`refs/tags/${releaseTag}^{commit}`]: sha },
-  },
-  macos: {
-    workflow: {
-      file: ".github/workflows/macos-release.yml",
-      job: "validate_macos_release_request",
-      step: "Validate release tag and package metadata",
-    },
-    env: { PUBLIC_RELEASE_BRANCH: "main", RELEASE_TAG: releaseTag },
   },
   placeholder: {
     workflow: {
@@ -102,14 +94,6 @@ posixIt.for([
     output: `tag_sha=${sha}\n`,
   },
   {
-    mode: "macos" as const,
-    commands: [
-      ["rev-parse", "HEAD"],
-      ["fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"],
-    ],
-    output: "",
-  },
-  {
     mode: "placeholder" as const,
     commands: [
       ["rev-parse", "HEAD"],
@@ -128,19 +112,12 @@ posixIt.for([
     expect(gitCommands(report)).toEqual(commands);
     expect(report.githubOutput).toBe(output);
     expect(report.readyAttempts).toHaveLength(commands.length);
-    if (mode === "macos") {
-      expect(report.commands.filter(({ tool }) => tool === "pnpm").map(({ args }) => args)).toEqual(
-        [["release:openclaw:npm:check"]],
-      );
-      expect(report.boundaries.some(({ name }) => name === "consumer:pnpm")).toBe(true);
-    } else {
-      expect(report.boundaries.some(({ name }) => name === "output")).toBe(true);
-    }
+    expect(report.boundaries.some(({ name }) => name === "output")).toBe(true);
   },
 );
 
 posixIt.for(
-  (["linux", "macos", "placeholder"] as const).flatMap((mode) =>
+  (["linux", "placeholder"] as const).flatMap((mode) =>
     ([23, 125, "hang"] as const).map((failure) => ({ failure, mode })),
   ),
 )(
@@ -156,7 +133,7 @@ posixIt.for(
 );
 
 posixIt.for(
-  (["linux", "macos"] as const).flatMap((mode) =>
+  (["linux"] as const).flatMap((mode) =>
     ([23, 125] as const).map((code) => ({ code, mode })),
   ),
 )(
@@ -173,28 +150,10 @@ posixIt.for(
   },
 );
 
-posixIt(
-  "macOS rejects an invalid public branch before any Git command",
-  async ({ signal }) => {
-    const report = await releaseRun(signal, "macos", {
-      env: { PUBLIC_RELEASE_BRANCH: "feature/not-a-release" },
-    });
-    expect(report.code, report.output).toBe(1);
-    expect(report.output).toContain(
-      "public_release_branch must be main or release/YYYY.M.PATCH, got feature/not-a-release.",
-    );
-    expect(gitCommands(report)).toEqual([]);
-    expect(report.commands.some(({ tool }) => tool === "pnpm")).toBe(false);
-  },
-  55_000,
-);
-
 const terminalOperations = [
   { mode: "linux" as const, match: "^fetch ", operation: "fetch" },
   { mode: "linux" as const, match: "^rev-parse ", operation: "rev-parse" },
   { mode: "linux" as const, match: "^merge-base ", operation: "merge-base" },
-  { mode: "macos" as const, match: "^rev-parse ", operation: "rev-parse" },
-  { mode: "macos" as const, match: "^fetch ", operation: "fetch" },
   { mode: "placeholder" as const, match: "^rev-parse ", operation: "rev-parse" },
   { mode: "placeholder" as const, match: "^fetch ", operation: "fetch" },
   {
@@ -371,7 +330,7 @@ posixIt(
 );
 
 posixIt.for(
-  (["linux", "macos", "placeholder"] as const).flatMap((mode) =>
+  (["linux", "placeholder"] as const).flatMap((mode) =>
     (["owner", "python", "git"] as const).map((setupFailure) => ({ mode, setupFailure })),
   ),
 )(

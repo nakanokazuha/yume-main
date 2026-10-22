@@ -6,8 +6,7 @@ it("routes Git-owner lifecycle proof without selecting native app builds", () =>
     runNode: true,
     runMacosNode: true,
     runWindows: true,
-    runMacos: false,
-    runIosBuild: false,
-    runAndroid: false,
   });
+  expect(detectChangedScope([".github/actions/publish-generated-pr/action.yml"]))
+    .not.toHaveProperty("runAndroid");
 });

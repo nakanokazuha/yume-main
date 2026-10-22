@@ -45,7 +45,7 @@ const OPENAI_PREFIX = buildStableCachePrefix("openai");
 const OPENAI_MCP_PREFIX = buildStableCachePrefix("openai-mcp-style");
 const ANTHROPIC_PREFIX = buildStableCachePrefix("anthropic");
 const LIVE_TEST_PNG_URL = new URL(
-  "../../../apps/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png",
+  "../../../ui/public/favicon-32.png",
   import.meta.url,
 );
 

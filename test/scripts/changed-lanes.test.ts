@@ -160,7 +160,6 @@ function createRootTestLintFixture() {
     "test/vitest/vitest.test-shards.d.mts",
     "src/gateway/server-methods-list.ts",
     "src/gateway/events.ts",
-    "scripts/protocol-event-coverage.allowlist.json",
   ]) {
     writeRepoFile(dir, file, readFileSync(path.join(repoRoot, file), "utf8"));
   }
@@ -202,12 +201,9 @@ function createRootTestLintFixture() {
       writeRepoFile(dir, `node_modules/.bin/${bin}.cmd`, `@node "%~dp0${bin}" %*\r\n`);
     }
   }
-  // All-lane plans run the real coverage guard against unchanged mobile inputs.
-  symlinkSync(path.join(repoRoot, "apps"), path.join(dir, "apps"), "junction");
   for (const script of [
     "run-oxlint.mjs",
     "report-test-temp-creations.mjs",
-    "check-protocol-event-coverage.mjs",
   ]) {
     symlinkSync(path.join(repoRoot, "scripts", script), path.join(dir, "scripts", script));
   }
@@ -1206,7 +1202,6 @@ describe("scripts/changed-lanes", () => {
   it("keeps release metadata commits off the full changed gate", () => {
     const result = detectChangedLanes([
       "CHANGELOG/records/2026.9.4.md",
-      "apps/android/version.json",
       "docs/.generated/config-baseline.sha256",
       "package.json",
     ]);
@@ -1215,7 +1210,7 @@ describe("scripts/changed-lanes", () => {
     const commands = plan.commands.map((command) => command.args[0]);
     expect(commands).not.toContain("tsgo:all");
     expect(commands).not.toContain("ios:version:check");
-    expect(commands).toContain("android:version:check");
+    expect(commands).not.toContain("android:version:check");
     expect(
       plan.commands.find((command) => command.args[0] === "release-metadata:check")?.args,
     ).toEqual(["release-metadata:check", "--staged"]);
@@ -1330,35 +1325,22 @@ describe("scripts/changed-lanes", () => {
     expect(findTypecheckInertPaths({ paths, base: "missing-ref", cwd: dir })).toEqual([]);
   });
 
-  it.each([true])("preserves mixed native lint with SwiftLint=%s", (swiftlintAvailable) => {
-    for (const { paths, androidLint, macosCi } of [
-      { paths: ["apps/ios/Sources/RootTabs.swift"], androidLint: false, macosCi: false },
-      {
-        paths: [
-          "apps/android/app/src/main/AndroidManifest.xml",
-          "apps/ios/Sources/RootTabs.swift",
-          "apps/shared/OpenClawKit/Sources/OpenClawKit/Client.swift",
-        ],
-        androidLint: true,
-        macosCi: true,
-      },
-    ]) {
-      const plan = createChangedCheckPlan(detectChangedLanes(paths), {
-        env: { CI: "1", PATH: "/usr/bin" },
-        platform: "linux",
-        swiftlintAvailable,
-      });
-      const commands = new Set(plan.commands.map((command) => command.args[0]));
+  it("retains the Mac host test lane for host runtime sources", () => {
+    const plan = createChangedCheckPlan(detectChangedLanes(["src/daemon/launchd.test.ts"]), {
+      env: { CI: "1" },
+    });
+    expect(plan.commands.map((command) => command.args[0])).toContain("test:macos:ci");
+  });
 
-      expect(commands.has("android:lint")).toBe(androidLint);
-      expect(commands.has("lint:apps")).toBe(swiftlintAvailable);
-      expect(commands.has("test:macos:ci")).toBe(macosCi);
-      expect(
-        plan.commands.some(
-          (command) => command.name === "lint apps (swiftlint unavailable on this host)",
-        ),
-      ).toBe(!swiftlintAvailable);
-    }
+  it("does not schedule removed Android or Swift app checks for the retained Tauri shell", () => {
+    const plan = createChangedCheckPlan(detectChangedLanes(["apps/linux/src/main.rs"]), {
+      env: { CI: "1" },
+    });
+    const commands = plan.commands.map((command) => command.args[0]);
+    expect(commands).not.toContain("android:lint");
+    expect(commands).not.toContain("lint:apps");
+    expect(commands).not.toContain("test:macos:ci");
+    expect(commands).not.toContain("scripts/check-native-state-schema-version.mjs");
   });
 
   it.each<[string, Partial<ReturnType<typeof createEmptyChangedLanes>>, string[]]>([
@@ -1414,10 +1396,6 @@ describe("scripts/changed-lanes", () => {
     ],
     [["src/state/openclaw-agent-schema.sql"], [["sqlite:sessions-schema:check"]]],
     [
-      ["scripts/swift-build-cache-metadata.py"],
-      [["test:serial", "test/scripts/swift-build-cache-metadata.test.ts"], ["test:macos:ci"]],
-    ],
-    [
       ["appcast-arm64.xml"],
       [["test:serial", "test/appcast.test.ts", "test/scripts/make-appcast.test.ts"]],
     ],
@@ -1428,15 +1406,6 @@ describe("scripts/changed-lanes", () => {
     for (const args of expected) {
       expect(commands).toContainEqual(args);
     }
-  });
-
-  it("excludes generated mobile build inputs from protocol coverage", () => {
-    const plan = createChangedCheckPlan(
-      detectChangedLanes(["apps/shared/OpenClawKit/Sources/.build/Generated.swift"]),
-    );
-    expect(plan.commands.map(({ args }) => args[0])).not.toContain(
-      "scripts/check-protocol-event-coverage.mjs",
-    );
   });
 
   it("adds the warning-only temp creation report for changed test paths", () => {

@@ -33,19 +33,7 @@ const CHECK_COMMANDS = [
   "pnpm plugin-sdk:check-exports",
   "pnpm plugin-sdk:surface:check",
   "pnpm ui:i18n:check",
-  "pnpm native:i18n:check",
 ];
-const FIX_COMMANDS = [
-  "node --import tsx scripts/sync-plugin-versions.ts",
-  "pnpm channels:catalog:gen",
-  "node --import tsx scripts/generate-plugin-inventory-doc.mts --write",
-  "pnpm config:schema:gen",
-  "pnpm config:channels:gen",
-  "pnpm config:docs:gen",
-  "pnpm plugin-sdk:sync-exports",
-  "pnpm ui:i18n:sync",
-];
-
 const tempDirs = new Set<string>();
 
 afterEach(() => {
@@ -119,40 +107,20 @@ function runPreflight(
 }
 
 function makeReleaseFixture(
-  params: {
-    buildVersion?: string;
-    packageVersion?: string;
-    shortVersion?: string;
-  } = {},
 ): string {
   const root = makeTempDir(tempDirs, "openclaw-release-preflight-fixture-");
-  const plistDir = join(root, "apps", "macos", "Sources", "OpenClaw", "Resources");
-  mkdirSync(plistDir, { recursive: true });
   writeFileSync(
     join(root, "package.json"),
-    `${JSON.stringify({ version: params.packageVersion ?? "2026.7.1-beta.3" }, null, 2)}\n`,
-  );
-  writeFileSync(
-    join(plistDir, "Info.plist"),
-    `<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0">
-<dict>
-  <key>CFBundleShortVersionString</key>
-  <string>${params.shortVersion ?? "2026.7.1"}</string>
-  <key>CFBundleVersion</key>
-  <string>${params.buildVersion ?? "2026070100"}</string>
-</dict>
-</plist>
-`,
+    `${JSON.stringify({ version: "2026.7.1-beta.3" }, null, 2)}\n`,
   );
   return root;
 }
 
-function makeIsolatedPreflightFixture(params: Parameters<typeof makeReleaseFixture>[0] = {}): {
+function makeIsolatedPreflightFixture(): {
   root: string;
   script: string;
 } {
-  const root = makeReleaseFixture(params);
+  const root = makeReleaseFixture();
   const files = [
     "scripts/release-preflight.mjs",
     "scripts/release-preflight.mts",
@@ -177,9 +145,8 @@ function makeIsolatedPreflightFixture(params: Parameters<typeof makeReleaseFixtu
 
 function runIsolatedPreflight(
   args: string[],
-  params: Parameters<typeof makeReleaseFixture>[0] = {},
 ) {
-  const fixture = makeIsolatedPreflightFixture(params);
+  const fixture = makeIsolatedPreflightFixture();
   const env = { ...process.env };
   delete env.NODE_OPTIONS;
   delete env.NODE_PATH;
@@ -197,27 +164,8 @@ function readPnpmLog(logPath: string): string[] {
 }
 
 describe("scripts/release-preflight.mjs", () => {
-  it("checks valid macOS metadata without node_modules", () => {
-    const result = runIsolatedPreflight(["--macos-versions-only"]);
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("[release-preflight] macOS app version metadata OK");
-  });
-
-  it("reports stale macOS metadata without node_modules", () => {
-    const result = runIsolatedPreflight(["--macos-versions-only"], {
-      shortVersion: "2026.6.10",
-    });
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      'CFBundleShortVersionString is "2026.6.10"; expected "2026.7.1" from package.json base version',
-    );
-    expect(result.stderr.trimEnd().split("\n").at(-1)).toBe("[release-preflight] FAILED (exit 1)");
-  });
-
   it("keeps multi-argument invocations on the tsx shim", () => {
-    const result = runIsolatedPreflight(["--macos-versions-only", "--check"]);
+    const result = runIsolatedPreflight(["--scope", "config", "--jobs", "2"]);
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
@@ -381,7 +329,6 @@ describe("scripts/release-preflight.mjs", () => {
         "node scripts/generate-npm-package-lock.mjs --all",
         "node --import tsx scripts/generate-plugin-inventory-doc.mts --check",
         "pnpm ui:i18n:check",
-        "pnpm native:i18n:check",
       ].toSorted(),
     );
     expect(result.stdout).toContain("(version, jobs=4)");
@@ -491,58 +438,4 @@ process.once("exit", () => {
     expect(readPnpmLog(fakePnpm.logPath).toSorted()).toEqual(commands.toSorted());
   });
 
-  it("reports stale macOS version and build metadata after running all checks", () => {
-    const fakePnpm = makeFakePnpm();
-    const root = makeReleaseFixture({
-      buildVersion: "2026061000",
-      shortVersion: "2026.6.10",
-    });
-    const result = runPreflight(["--check"], fakePnpm, {}, root);
-
-    expect(result.status).toBe(1);
-    expect(readPnpmLog(fakePnpm.logPath).toSorted()).toEqual(CHECK_COMMANDS.toSorted());
-    expect(result.stderr).toContain(
-      'CFBundleShortVersionString is "2026.6.10"; expected "2026.7.1" from package.json base version',
-    );
-    expect(result.stderr).toContain(
-      'CFBundleVersion is "2026061000"; expected "2026070100" for 2026.7.1',
-    );
-    expect(result.stderr).toContain("Correct manual version metadata first.");
-  });
-
-  it("fails closed when required macOS plist values are missing", () => {
-    const fakePnpm = makeFakePnpm();
-    const root = makeReleaseFixture();
-    const plistPath = join(root, "apps", "macos", "Sources", "OpenClaw", "Resources", "Info.plist");
-    writeFileSync(
-      plistPath,
-      readFileSync(plistPath, "utf8").replace(
-        /\s*<key>CFBundleVersion<\/key>\s*<string>[^<]*<\/string>/u,
-        "",
-      ),
-    );
-    const result = runPreflight(["--check"], fakePnpm, {}, root);
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "Info.plist must contain exactly one string value for CFBundleVersion; found 0",
-    );
-  });
-
-  it("keeps manual macOS metadata untouched in refresh mode", () => {
-    const fakePnpm = makeFakePnpm();
-    const root = makeReleaseFixture({
-      buildVersion: "2026061000",
-      shortVersion: "2026.6.10",
-    });
-    const plistPath = join(root, "apps", "macos", "Sources", "OpenClaw", "Resources", "Info.plist");
-    const before = readFileSync(plistPath, "utf8");
-    const result = runPreflight(["--fix"], fakePnpm, {}, root);
-
-    expect(result.status).toBe(1);
-    expect(readFileSync(plistPath, "utf8")).toBe(before);
-    expect(readPnpmLog(fakePnpm.logPath).toSorted()).toEqual(
-      [...FIX_COMMANDS, ...CHECK_COMMANDS].toSorted(),
-    );
-  });
 });

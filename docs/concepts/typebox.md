@@ -69,7 +69,7 @@ Membership is now opt-out for eligible source exports: a new `*Schema` export in
 - `pnpm protocol:check:swift` and `pnpm protocol:check:kotlin` bypass the cache, check the schema/version contract, and generate twice to verify determinism.
 - `pnpm protocol:check` checks the registry structure and all generated artifacts. Outputs are ignored build artifacts, not committed baselines. JSON Schema validation checks required frame definitions, frame ordering, the `type` discriminator mapping, and non-empty method metadata. Native validation checks protocol versions and Swift model/enum membership against the schema registry; native compatibility tests protect decoding and initializer contracts.
 
-Commit schema and generator changes together; native outputs are never committed. `scripts/native-protocol-inputs.json` owns the source inputs shared by repository tooling and both native build systems. Generation checks its import graph against that manifest, so an undeclared dependency fails instead of leaving stale models. Stable decoding behavior belongs in the focused `GatewayModelsCompatibilityTests.swift` regressions rather than in handwritten model copies.
+Commit Gateway schema and generator changes together. The retained Node build emits the protocol schema from the registry and checks that schema against the package contract. Runtime compatibility belongs in the focused Gateway protocol tests rather than in handwritten model copies.
 
 ## How the schemas are used at runtime
 
@@ -258,7 +258,7 @@ The Swift generator emits:
 
 Unknown frame types are preserved as raw payloads for forward compatibility.
 
-Some registry names alias the same canonical schema object. The explicit canonical alias preferences in `scripts/protocol-gen-swift.ts` preserve the existing public Swift type names when registry enumeration changes. Review generated declaration bodies, including field types, initializers, and encoding/decoding behavior; moving declarations must not silently select different nominal types.
+Some registry names alias the same canonical schema object. Review generated schema declarations, including field types and encoding/decoding behavior; moving declarations must not silently change the published wire contract.
 
 The published JSON Schema's `oneOf` frame order is a separate contract: `req`, `res`, then `event`, with the matching `type` discriminator mapping. `scripts/lib/protocol-schema-document.mts` owns and checks that order independently of registry definition order.
 

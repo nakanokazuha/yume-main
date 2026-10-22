@@ -108,7 +108,7 @@ describe("release runner reservation", () => {
         "ubuntu-latest",
       ],
       [workflows.get("full-release-validation")?.jobs.resolve_target?.["runs-on"], "ubuntu-24.04"],
-      [workflows.get("ci")?.jobs["macos-swift"]?.["runs-on"], "xcode-27"],
+      [workflows.get("ci")?.jobs["macos-node"]?.["runs-on"], "macos-15"],
       [workflows.get("ci")?.jobs["checks-windows"]?.["runs-on"], "windows-2025"],
     ];
     for (const [selector, label] of defaultLabels) {

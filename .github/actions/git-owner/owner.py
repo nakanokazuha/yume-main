@@ -461,13 +461,11 @@ def checkout_selected_ref():
 def checkout_harness(sha):
     action = ".github/actions/setup-node-env/action.yml"
     node_setup_scripts = ("scripts/lib/pnpm-lockfile-documents.mjs",)
-    evidence_scripts = ("scripts/ios-screenshot-evidence.mjs", "scripts/lib/direct-run.mjs", "scripts/ci-static-step.sh")
-    platform_scripts = ("scripts/lib/swift-toolchain.sh", "scripts/lib/ci-ios-smoke-plan.mjs", "scripts/ci-xcodebuild.py")
+    evidence_scripts = ("scripts/lib/direct-run.mjs", "scripts/ci-static-step.sh")
     upgrade_scripts = ("scripts/lib/release-upgrade-baseline.mjs", "scripts/lib/release-version.mjs", "scripts/lib/canonical-json.mjs", "scripts/lib/upgrade-survivor-policy.mjs", "scripts/lib/upgrade-survivor-scenarios.json")
     # Preflight imports these siblings by file-relative paths.
     preflight_scripts = (
         "scripts/ci-build-manifest.mjs",
-        "scripts/lib/ci-ios-smoke-plan.mjs",
         "scripts/lib/release-context.mjs",
         "scripts/lib/release-version.mjs",
     )
@@ -502,8 +500,6 @@ def checkout_harness(sha):
             pathspecs += evidence_scripts
         elif kind == "preflight":
             pathspecs += preflight_scripts
-        if kind == "platform":
-            pathspecs += platform_scripts
         if kind == "linux-node":
             pathspecs += linux_node_scripts
         paths = git_output(workspace, "ls-files", "-z", "--", *pathspecs).split("\0")[:-1]
@@ -514,8 +510,6 @@ def checkout_harness(sha):
         sparse_paths = ["/.github/actions/", *(f"/{path}" for path in node_setup_scripts)]
         if kind in ("platform", "linux-node"):
             sparse_paths += [f"/{path}" for path in evidence_scripts]
-        if kind == "platform":
-            sparse_paths += [f"/{path}" for path in platform_scripts]
         if kind == "linux-node":
             sparse_paths += [f"/{path}" for path in linux_node_scripts]
         # Rooted non-cone patterns keep the kind-owned workflow files exact.
@@ -548,7 +542,7 @@ def checkout():
         subprocess.run(["find", workspace, "-mindepth", "1", "-maxdepth", "1",
                         "-exec", "rm", "-rf", "{}", "+"], check=True)
     run_git(workspace, "init", workspace)
-    if kind in ("linux-node", "android"):
+    if kind == "linux-node":
         run_git(workspace, "config", "--global", "--add", "safe.directory", workspace)
     run_git(workspace, "config", "gc.auto", "0")
     run_git(workspace, "remote", "add", "origin", remote)
@@ -557,7 +551,7 @@ def checkout():
         if kind == "preflight" and resolve_ref("HEAD") == os.environ["WORKFLOW_SHA"]:
             checkout_harness(os.environ["WORKFLOW_SHA"])
         return
-    target = "refs/remotes/origin/ci-target" if kind in ("linux-node", "android") else "refs/remotes/origin/checkout"
+    target = "refs/remotes/origin/ci-target" if kind == "linux-node" else "refs/remotes/origin/checkout"
     sha = "refs/heads/main" if kind == "clawhub" else os.environ["CHECKOUT_SHA"]
     refs = [f"+{sha}:{target}"]
     base = os.environ.get("CHECKOUT_BASE_SHA") if kind == "linux-node" else None
@@ -569,11 +563,7 @@ def checkout():
     fetch(workspace, *refs, prune=True, max_attempts=1 if reset else 3,
           retry_codes=(124, 137) if kind == "skills" else ())
     run_git(workspace, "checkout", *(["--force"] if reset else []), "--detach",
-            sha if kind in ("linux-node", "android") else target)
-    if kind == "android":
-        if not os.access(os.path.join(workspace, "apps/android/gradlew"), os.X_OK):
-            raise GitFailure(1)
-        return
+            sha if kind == "linux-node" else target)
     if kind in ("clawhub", "skills"):
         return
     checkout_harness(sha)
@@ -615,7 +605,7 @@ def main():
     del token
     if kind == "clawhub":
         workspace = os.path.join(workspace, "clawhub-source")
-    reset = kind in ("linux-node", "android", "clawhub")
+    reset = kind in ("linux-node", "clawhub")
     label = "ClawHub checkout" if kind == "clawhub" else "checkout"
     started_at = time.monotonic()
     try:

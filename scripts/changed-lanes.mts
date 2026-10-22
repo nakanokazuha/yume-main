@@ -23,17 +23,6 @@ export function hasDeadcodeScannedSource(changedPaths: string[]): boolean {
   return changedPaths.some((path) => DEADCODE_SOURCE_PATH_RE.test(path));
 }
 
-const PROTOCOL_EVENT_COVERAGE_INPUT_RE =
-  /^(?:src\/gateway\/(?:server-methods-list|events)\.ts|scripts\/(?:(?:check-protocol-event-coverage|changed-lanes|check-changed)\.m[jt]s|tsx\.mjs|lib\/(?:(?:tsx-cli-shim|record-shared)\.mjs|local-check-runtime\.mts)|protocol-event-coverage\.allowlist\.json)|apps\/(?:ios\/Sources|shared\/OpenClawKit\/Sources)\/.+\.swift|apps\/android\/app\/src\/main\/java\/ai\/openclaw\/app\/.+\.kt)$/u;
-
-export function hasProtocolEventCoverageInput(changedPaths: string[]): boolean {
-  // Match the guard's scan roots and excluded directories, including deleted inputs.
-  return changedPaths.some(
-    (path) =>
-      PROTOCOL_EVENT_COVERAGE_INPUT_RE.test(path) && !/\/(?:Tests|\.build|build)\//u.test(path),
-  );
-}
-
 const SCRIPTS_TYPECHECK_PATH_RE =
   /^(?:scripts\/.*\.(?:[cm]?ts|[cm]?tsx)|tsconfig\.scripts\.json)$/u;
 /** @internal Shared repository-script contract. */
@@ -102,12 +91,6 @@ export function hasConfigDocInput(changedPaths: string[]): boolean {
  */
 export const RELEASE_METADATA_PATHS = new Set([
   "CHANGELOG.md",
-  "apps/android/CHANGELOG.md",
-  "apps/android/Config/Version.properties",
-  "apps/android/fastlane/metadata/android/en-US/release_notes.txt",
-  "apps/android/version.json",
-  "apps/ios/CHANGELOG.md",
-  "apps/macos/Sources/OpenClaw/Resources/Info.plist",
   ...CONFIG_DOC_BASELINE_PATHS,
   "docs/install/updating.md",
   "docs/install/updating/automatic-updates.md",
