@@ -133,14 +133,12 @@ export async function createCopilotToolBridge(
     abortSignal: attemptParams.abortSignal,
     agentId: input.agentId,
     config: attemptParams.config,
-    codeModeOverride: attemptParams.codeModeOverride,
     disableTools: attemptParams.disableTools,
     // Catalog calls are nested inside SDK controls; scheduling them again could
     // make a control wait for its own completion.
     executeTool: (toolParams) => executeCatalogTool(input, toolParams),
     forceMessageTool: shouldForceCopilotMessageTool(attemptParams),
     isRawModelRun: isRawCopilotModelRun(attemptParams),
-    // Carries catalog compat so `tools.codeMode.enabled: "auto"` can resolve per model.
     model: attemptParams.model,
     contextTokenBudget: attemptParams.contextTokenBudget,
     modelId: input.modelId,
@@ -240,8 +238,7 @@ export async function createCopilotToolBridge(
   );
   return {
     cleanup: toolSurfaceRuntime.cleanup,
-    // Report the resolved auto mode, which only the tool-surface owner knows.
-    codeModeEngaged: toolSurfaceRuntime.codeModeControlsEnabled,
+    codeModeEngaged: false,
     promptToolPolicy: {
       requireExplicitMessageTarget: toolOptions.requireExplicitMessageTarget,
       apply: (params: { toolsAllow?: string[]; forceToolNames?: readonly string[] } = {}) => {
